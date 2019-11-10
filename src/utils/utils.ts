@@ -196,19 +196,19 @@ export function endsWith(str : string, endsWith : string) : boolean
     return str.substr(str.length - endsWith.length) === endsWith;
 }
 
-export function bigintStat(filename : string, cb : (err : Error, stat : fs.Stats) => void)
+export function bigintStat(filename : string, cb : (err : Error | null, stat : fs.BigIntStats) => void)
 {
-    (fs as any).stat(filename, { bigint: true }, cb);
+    fs.stat(filename, { bigint: true }, cb);
 }
 
-export function bigintStatSync(filename : string) : fs.Stats
+export function bigintStatSync(filename : string) : fs.BigIntStats
 {
-    return (fs as any).statSync(filename,  { bigint: true });
+    return fs.statSync(filename,  { bigint: true });
 }
 
 export function getFileId(filename : string, callback : (id : string) => void)
 {
-    bigintStat(filename, (err : Error, stat : fs.Stats) =>
+    bigintStat(filename, (err : Error | null, stat : fs.BigIntStats) =>
     {
         if (err)
         {

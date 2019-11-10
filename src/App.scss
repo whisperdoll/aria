@@ -1,0 +1,32 @@
+$playlistSelectWidth: 300px;
+
+.playlist
+{
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: calc(100% - #{$playlistSelectWidth});
+    height: 100%;
+    overflow: auto;
+}
+
+.playlistSelect
+{
+    position: absolute;
+    top: 0;
+    right: 0;
+    overflow: auto;
+    width: $playlistSelectWidth;
+    height: 100%;
+}
+
+#background
+{
+    z-index: -1000;
+    background: rgba(0,0,0,0.9);
+}
+
+#container
+{
+    z-index: 0;
+}

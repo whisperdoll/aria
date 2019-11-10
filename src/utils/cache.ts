@@ -9,6 +9,7 @@ export interface FileInfo
 {
     filename : string;
     fid : string;
+    stats : fs.BigIntStats;
 };
 
 export class FileCache
@@ -32,7 +33,8 @@ export class FileCache
             let stats = bigintStatSync(filename);
             let info = {
                 filename,
-                fid: stats.ino.toString()
+                fid: stats.ino.toString(),
+                stats: stats
             };
             this.filenameStats.set(filename, info);
             return info;

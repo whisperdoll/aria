@@ -1,4 +1,3 @@
-import { FileInfo, FileCache } from './cache';
 import * as path from "path";
 import { getUserDataPath } from './utils';
 const defaultPic = require("../assets/default.png");

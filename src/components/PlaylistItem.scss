@@ -8,6 +8,7 @@ $songHeight: 68px;
     color: #eee;
     font-family: "Segoe UI";
     position: relative;
+    user-select: none;
 
     &.skipping .primaryLabel
     {

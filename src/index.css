@@ -1,4 +1,4 @@
-body, html, #app {
+body, html, #container, #root, #background {
     position: relative;
     padding: 0;
     margin: 0;
@@ -8,7 +8,7 @@ body, html, #app {
     height: 100%;
 }
 
-#app {
+#container {
     font-family: 'Avenir', Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

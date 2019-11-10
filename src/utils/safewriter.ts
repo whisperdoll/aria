@@ -66,7 +66,7 @@ export class SafeWriter
         }
         else
         {
-            bigintStat(filename, (err : Error, stat : fs.Stats) =>
+            bigintStat(filename, (err : Error | null, stat : fs.BigIntStats) =>
             {
                 if (err)
                 {
@@ -86,7 +86,7 @@ export class SafeWriter
 
         if (justFinished === undefined)
         {
-            throw "well fuck";
+            throw new Error("well fuck");
         }
 
         if (justFinished.cb)

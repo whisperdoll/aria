@@ -8,6 +8,8 @@ interface Props
 {
     fileInfo: FileInfo;
     index: number;
+    onClick: (itemInfo: FileInfo, e: React.MouseEvent) => any;
+    selected: boolean;
 }
 
 interface State
@@ -46,11 +48,31 @@ export default class PlaylistItem extends React.Component<Props, State>
             (this.state.metadata.track ? "[" + this.state.metadata.track.toString() + "]" : "");
     }
 
+    handleClick(e: React.MouseEvent): void
+    {
+        this.props.onClick(this.props.fileInfo, e);
+    }
+
     render()
     {
+        let className = "playlistItem";
+        className += (this.props.index % 2 === 0 ? " even" : " odd");
+        if (this.props.selected)
+        {
+            className += " selected";
+        }
+
         return (
-            <div className={"playlistItem" + (this.props.index % 2 === 0 ? " even" : " odd")}>
-                <img className="thumbnail" src={this.state.metadata.picture || defaultThumbnail} />
+            <div
+                className={className}
+                onClick={this.handleClick.bind(this)}
+                onContextMenu={this.handleClick.bind(this)}
+            >
+                <img
+                    className="thumbnail"
+                    src={this.state.metadata.picture || defaultThumbnail}
+                    alt="thumbnail"
+                />
                 <div className="shadow"></div>
                 <div className="labels">
                     <div className="primaryLabel">{ this.state.metadata.title }</div>
