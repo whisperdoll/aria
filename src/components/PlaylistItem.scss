@@ -1,0 +1,90 @@
+$songHeight: 68px;
+.playlistItem
+{
+    height: $songHeight;
+    width: 100%;
+    padding: 0;
+    background-color: rgba(0, 0, 0, 0);
+    color: #eee;
+    font-family: "Segoe UI";
+    position: relative;
+
+    &.skipping .primaryLabel
+    {
+        text-decoration: line-through;
+    }
+
+    &.even
+    {
+        background-color: rgba(0,0,0,0.06);
+    }
+
+    &.selected
+    {
+        background-color: rgba(180,180,180,0.85);
+        color: #111;
+
+        .secondaryLabel
+        {
+            color: #111 !important;
+        }
+    }
+
+    &.playing
+    {
+        font-weight: bold;
+    }
+
+    img.thumbnail {
+        height: $songHeight;
+        width: $songHeight;
+        object-fit: cover;
+        object-position: center;
+        float: left;
+        margin-right: 16px;
+        //box-shadow: 0px 0px 10px 1px rgba(0, 0, 0, 0.75);
+    }
+
+    .shadow
+    {
+        position: absolute;
+        left: $songHeight;
+        width: 6px;
+        height: 100%;
+        background: linear-gradient(to right, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0));
+    }
+
+    .labels
+    {
+        display: flex;
+        flex-flow: column wrap;
+        justify-content: space-evenly;
+        align-content: left;
+        align-items: stretch;
+        height: 100%;
+        overflow: hidden;
+        white-space: nowrap;
+
+        div
+        {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+            word-break: keep-all;
+            white-space: nowrap;
+
+            &.primaryLabel
+            {
+                font-size: 1.2em;
+            }
+    
+            &.secondaryLabel
+            {
+                font-size: 1em;
+                color: #bbb;
+                font-style: italic;
+                padding-bottom: 0.2em;
+            }
+        }
+    }
+}
