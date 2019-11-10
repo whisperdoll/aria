@@ -11259,6 +11259,10 @@ watchpack@^1.6.0:
     graceful-fs "^4.1.2"
     neo-async "^2.5.0"
 
+"wavesurfer.js@https://github.com/songsing/wavesurfer.js.git":
+  version "3.0.0"
+  resolved "https://github.com/songsing/wavesurfer.js.git#9d7e4c3ddfb266f212911ce3330dd7c5ee1da690"
+
 wbuf@^1.1.0, wbuf@^1.7.3:
   version "1.7.3"
   resolved "https://registry.yarnpkg.com/wbuf/-/wbuf-1.7.3.tgz#c1d8d149316d3ea852848895cb6a0bfe887b87df"

@@ -2,7 +2,6 @@ import React from 'react';
 import PlaylistItem from './PlaylistItem';
 import "./Playlist.scss";
 import { FileInfo } from '../utils/cache';
-import { array_contains } from '../utils/utils';
 
 interface Props
 {

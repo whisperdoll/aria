@@ -1,12 +1,13 @@
 import React from 'react';
 import './App.scss';
 import Playlist from './components/Playlist';
-import { getUserDataPath, endsWith, bigintStatSync, array_copy } from './utils/utils';
+import { getUserDataPath, endsWith, array_copy, mod } from './utils/utils';
 import { FileCache, FileInfo } from "./utils/cache";
 import * as fs from "fs";
 import * as path from "path";
-import { PlaylistData } from './utils/datatypes';
+import { PlaylistData, Metadata } from './utils/datatypes';
 import PlaylistSelect from './components/PlaylistSelect';
+import BottomBar from './components/BottomBar';
 
 interface Props
 {
@@ -18,23 +19,20 @@ interface State
     fileInfos: FileInfo[];
     selection: Set<FileInfo>;
     playlistDatas: PlaylistData[];
+    playing: boolean;
+    currentItem: FileInfo | null;
+    metadata: Map<string, Metadata>;
 }
 
 export default class App extends React.Component<Props, State>
 {
     private playlistData: PlaylistData | null = null;
     private allowedExtensions = [ "mp3", "m4a" ];
+    private allFileInfos: FileInfo[] = [];
 
     constructor(props: Props)
     {
         super(props);
-
-        this.state = {
-            filter: "",
-            fileInfos: [],
-            selection: new Set(),
-            playlistDatas: []
-        };
 
         if (!fs.existsSync(getUserDataPath()))
         {
@@ -42,6 +40,15 @@ export default class App extends React.Component<Props, State>
         }
 
         FileCache.loadMetadata();
+
+        this.state = {
+            filter: "",
+            fileInfos: [],
+            selection: new Set(),
+            playlistDatas: [],
+            playing: false,
+            currentItem: null
+        };
     }
 
     loadPlaylist(playlistData: PlaylistData): void
@@ -75,9 +82,11 @@ export default class App extends React.Component<Props, State>
 
         this.playlistData = playlistData;
 
+        this.allFileInfos = array_copy(fileInfos);
+
         this.setState({
             ...this.state,
-            fileInfos
+            fileInfos: array_copy(fileInfos)
         });
     }
     
@@ -203,8 +212,80 @@ export default class App extends React.Component<Props, State>
         this.loadPlaylist(playlistData);
     }
 
+    handleNext()
+    {
+        this.setState({
+            ...this.state,
+            currentItem: this.nextItem
+        });
+    }
+
+    handlePrevious()
+    {
+        this.setState({
+            ...this.state,
+            currentItem: this.previousItem
+        });
+    }
+
+    handlePlayPause()
+    {
+        if (!this.state.playing)
+        {
+            if (this.state.selection.size > 0)
+            {
+                let items: FileInfo[] = [];
+                this.state.selection.forEach(s => items.push(s));
+                this.setState({
+                    ...this.state,
+                    currentItem: items[0],
+                    playing: true
+                });
+            }
+        }
+        else
+        {
+            this.setState({
+                ...this.state,
+                playing: false
+            });
+        }
+    }
+
+    handlePlaybackStart()
+    {
+    }
+
+    get previousItem(): FileInfo | null
+    {
+        if (!this.state.currentItem) return null;
+
+        let index = this.state.fileInfos.indexOf(this.state.currentItem);
+        index = mod(index - 1, this.state.fileInfos.length);
+
+        return this.state.fileInfos[index];
+    }
+
+    get nextItem(): FileInfo | null
+    {
+        if (!this.state.currentItem) return null;
+
+        let index = this.state.fileInfos.indexOf(this.state.currentItem);
+        index = mod(index + 1, this.state.fileInfos.length);
+
+        return this.state.fileInfos[index];
+    }
+
+    handlePlaybackFinish()
+    {
+        this.setState({
+            ...this.state,
+            currentItem: this.nextItem
+        });
+    }
+
     render()
-{
+    {
         return (
             <div id="container">
                 <div id="background"></div>
@@ -218,6 +299,16 @@ export default class App extends React.Component<Props, State>
                 <PlaylistSelect
                     playlistDatas={this.state.playlistDatas}
                     onSelect={this.handlePlaylistSelect.bind(this)}
+                />
+
+                <BottomBar
+                    onPrevious={this.handlePrevious.bind(this)}
+                    onPlayPause={this.handlePlayPause.bind(this)}
+                    onNext={this.handleNext.bind(this)}
+                    playing={this.state.playing}
+                    currentItem={this.state.currentItem}
+                    onPlaybackStart={this.handlePlaybackStart.bind(this)}
+                    onPlaybackFinish={this.handlePlaybackFinish.bind(this)}
                 />
             </div>
         );

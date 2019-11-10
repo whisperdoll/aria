@@ -35,7 +35,8 @@
     "react": "^16.11.0",
     "react-dom": "^16.11.0",
     "react-scripts": "3.2.0",
-    "react-window": "^1.8.5"
+    "react-window": "^1.8.5",
+    "wavesurfer.js": "https://github.com/songsing/wavesurfer.js.git"
   },
   "scripts": {
     "start": "rescripts start",

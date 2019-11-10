@@ -50,11 +50,11 @@ export class FileCache
         return this.getInfo(filename).fid;
     }
 
-    public static getMetadata(filename : string, fid : string, onupdate : (data : Metadata) => any) : void
+    public static getMetadata(filename : string, fid : string, onupdate : (data : Metadata) => any, force: boolean = false) : void
     {
         let cached = this.metadata[fid];
 
-        if (cached)
+        if (cached && !force)
         {
             onupdate(cached);
             return;

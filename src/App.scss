@@ -1,4 +1,4 @@
-$playlistSelectWidth: 300px;
+@import "variables.scss";
 
 .playlist
 {
@@ -6,7 +6,7 @@ $playlistSelectWidth: 300px;
     top: 0;
     left: 0;
     width: calc(100% - #{$playlistSelectWidth});
-    height: 100%;
+    height: calc(100% - #{$bottomPanelHeight});
     overflow: auto;
 }
 
@@ -17,7 +17,16 @@ $playlistSelectWidth: 300px;
     right: 0;
     overflow: auto;
     width: $playlistSelectWidth;
-    height: 100%;
+    height: calc(100% - #{$bottomPanelHeight});
+}
+
+#bottomBar
+{
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: $bottomPanelHeight;
 }
 
 #background
