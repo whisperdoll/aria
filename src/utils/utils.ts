@@ -6,6 +6,28 @@ let exec = require("child_process").exec;
 
 export type SortFunction<T> = (a : T, b : T) => boolean;
 
+export function mapToJson(map: Map<string, any>): { [key: string]: any }
+{
+    let ret: { [key: string]: any } = {};
+    map.forEach((v, k) =>
+    {
+        ret[k] = v;
+    });
+
+    return ret;
+}
+
+export function jsonToMap(json: { [key: string]: any }): Map<string, any>
+{
+    let ret = new Map();
+    for (let key in json)
+    {
+        ret.set(key, json[key]);
+    }
+
+    return ret;
+}
+
 export function isFileNotFoundError(err : NodeJS.ErrnoException) : boolean
 {
     return err.code === "ENOENT";

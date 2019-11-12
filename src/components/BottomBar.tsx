@@ -2,6 +2,7 @@ import React from 'react';
 import "./BottomBar.scss";
 import WaveBar from "./WaveBar"
 import { FileInfo } from '../utils/cache';
+import { Metadata } from '../utils/datatypes';
 
 interface Props
 {
@@ -12,6 +13,7 @@ interface Props
     currentItem: FileInfo | null;
     onPlaybackStart: () => any;
     onPlaybackFinish: () => any;
+    metadata: Metadata;
 }
 
 interface State
@@ -49,8 +51,8 @@ export default class BottomBar extends React.Component<Props, State>
         let playPause = this.props.playing ? "pause" : "play";
         return (
             <div id="bottomBar">
-                <div id="primaryLabel">eat pant</div>
-                <div id="secondaryLabel">trick or treat bitch</div>
+                <div id="primaryLabel">{this.props.metadata.title}</div>
+                <div id="secondaryLabel">{this.props.metadata.artist + " — " + this.props.metadata.album}</div>
                 <div id="playerControls">
                     <button
                         className="svgButton"

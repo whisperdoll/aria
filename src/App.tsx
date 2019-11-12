@@ -5,9 +5,13 @@ import { getUserDataPath, endsWith, array_copy, mod } from './utils/utils';
 import { FileCache, FileInfo } from "./utils/cache";
 import * as fs from "fs";
 import * as path from "path";
-import { PlaylistData, Metadata } from './utils/datatypes';
+import { PlaylistData, Metadata, DefaultMetadata } from './utils/datatypes';
 import PlaylistSelect from './components/PlaylistSelect';
 import BottomBar from './components/BottomBar';
+import * as Electron from "electron";
+import PlaylistDialog from './components/PlaylistDialog/PlaylistDialog';
+import ContextMenu from './components/ContextMenu';
+import ContextMenuItem from './components/ContextMenuItem';
 
 interface Props
 {
@@ -22,13 +26,21 @@ interface State
     playing: boolean;
     currentItem: FileInfo | null;
     metadata: Map<string, Metadata>;
+    showingDialogs: {
+        playlist: boolean
+    };
+    showingContextMenus: {
+        playlist: boolean
+    };
 }
+
+export const AllowedExtensions = [ "mp3", "m4a" ];
 
 export default class App extends React.Component<Props, State>
 {
     private playlistData: PlaylistData | null = null;
-    private allowedExtensions = [ "mp3", "m4a" ];
     private allFileInfos: FileInfo[] = [];
+    private contextData: PlaylistData | null = null;
 
     constructor(props: Props)
     {
@@ -39,26 +51,56 @@ export default class App extends React.Component<Props, State>
             fs.mkdirSync(getUserDataPath());
         }
 
-        FileCache.loadMetadata();
-
         this.state = {
             filter: "",
             fileInfos: [],
             selection: new Set(),
             playlistDatas: [],
             playing: false,
-            currentItem: null
+            currentItem: null,
+            metadata: new Map(FileCache.loadMetadata()),
+            showingDialogs: {
+                playlist: false
+            },
+            showingContextMenus: {
+                playlist: false
+            }
         };
+
+        let ipcRenderer = Electron.ipcRenderer;
+        ipcRenderer.on("app-command", this.processAppCommand.bind(this));
+    }
+
+    private processAppCommand(e : any, command : string) : void
+    {
+        switch (command)
+        {
+            case "media-nexttrack": this.handleNext(); break;
+            case "media-previoustrack": this.handlePrevious(); break;
+            case "media-play-pause": this.handlePlayPause(); break;
+        }
     }
 
     loadPlaylist(playlistData: PlaylistData): void
     {
         const filenameAllowed = (f: string): boolean =>
         {
-            return this.allowedExtensions.some(e => endsWith(f, "." + e));
+            return AllowedExtensions.some(e => endsWith(f, "." + e));
         };
 
         let fileInfos: FileInfo[] = [];
+
+        let push = (info: FileInfo): void =>
+        {
+            fileInfos.push(info);
+            FileCache.getMetadata(info.filename, info.fid, (metadata, fid) =>
+            {
+                this.setState({
+                    ...this.state,
+                    metadata: new Map(FileCache.metadata)
+                });
+            });
+        };
 
         playlistData.paths.forEach((pathInfo) =>
         {
@@ -67,16 +109,15 @@ export default class App extends React.Component<Props, State>
             {
                 if (filenameAllowed(pathInfo.path))
                 {
-                    fileInfos.push(info);
+                    push(info);
                 }
             }
             else
             {
-                fileInfos.push(
-                    ...fs.readdirSync(pathInfo.path)
-                        .filter(f => filenameAllowed(f))
-                        .map(f => FileCache.getInfo(path.join(pathInfo.path, f)))
-                );
+                fs.readdirSync(pathInfo.path)
+                    .filter(f => filenameAllowed(f))
+                    .map(f => FileCache.getInfo(path.join(pathInfo.path, f)))
+                    .forEach(fi => push(fi));
             }
         });
 
@@ -207,6 +248,15 @@ export default class App extends React.Component<Props, State>
         });
     }
 
+    handleItemDoubleClick(itemInfo: FileInfo, e: React.MouseEvent)
+    {
+        this.setState({
+            ...this.state,
+            currentItem: itemInfo,
+            playing: true
+        });
+    }
+
     handlePlaylistSelect(playlistData: PlaylistData): void
     {
         this.loadPlaylist(playlistData);
@@ -230,6 +280,7 @@ export default class App extends React.Component<Props, State>
 
     handlePlayPause()
     {
+        console.log(this.state);
         if (!this.state.playing)
         {
             if (this.state.selection.size > 0)
@@ -250,10 +301,24 @@ export default class App extends React.Component<Props, State>
                 playing: false
             });
         }
+        console.log(this.state);
     }
 
     handlePlaybackStart()
     {
+        if (!this.state.currentItem) return;
+
+        FileCache.getMetadata(
+            this.state.currentItem.filename,
+            this.state.currentItem.fid,
+            (metadata, fid) =>
+            {
+                this.setState({
+                    ...this.state,
+                    metadata: FileCache.metadata
+                });
+            }
+        );
     }
 
     get previousItem(): FileInfo | null
@@ -284,8 +349,50 @@ export default class App extends React.Component<Props, State>
         });
     }
 
+    handlePlaylistAccept(playlistData: PlaylistData): void
+    {
+
+    }
+
+    handleDialogCancel(key: string)
+    {
+        this.setState({
+            ...this.state,
+            showingDialogs: {
+                ...this.state.showingDialogs,
+                playlist: false
+            }
+        });
+    }
+
+    handleEditPlaylist(): void
+    {
+        if (!this.contextData) return;
+        
+        console.log("editing " + this.contextData.name);
+    }
+
+    handlePlaylistContextMenu(data: PlaylistData): void
+    {
+        this.contextData = data;
+        this.setState({
+            ...this.state,
+            showingContextMenus: {
+                ...this.state.showingContextMenus,
+                playlist: true
+            }
+        });
+    }
+
     render()
     {
+        let currentMetadata = DefaultMetadata;
+
+        if (this.state.currentItem && this.state.metadata.get(this.state.currentItem.fid))
+        {
+            currentMetadata = this.state.metadata.get(this.state.currentItem.fid) as Metadata;
+        }
+
         return (
             <div id="container">
                 <div id="background"></div>
@@ -293,12 +400,15 @@ export default class App extends React.Component<Props, State>
                     fileInfos={this.state.fileInfos}
                     filter={this.state.filter}
                     onItemClick={this.handleItemClick.bind(this)}
+                    onItemDoubleClick={this.handleItemDoubleClick.bind(this)}
                     selection={this.state.selection}
+                    metadata={this.state.metadata}
                 />
 
                 <PlaylistSelect
                     playlistDatas={this.state.playlistDatas}
                     onSelect={this.handlePlaylistSelect.bind(this)}
+                    onContextMenu={this.handlePlaylistContextMenu.bind(this)}
                 />
 
                 <BottomBar
@@ -309,7 +419,27 @@ export default class App extends React.Component<Props, State>
                     currentItem={this.state.currentItem}
                     onPlaybackStart={this.handlePlaybackStart.bind(this)}
                     onPlaybackFinish={this.handlePlaybackFinish.bind(this)}
+                    metadata={currentMetadata}
                 />
+
+                <PlaylistDialog
+                    onAccept={this.handlePlaylistAccept.bind(this)}
+                    playlistDatas={this.state.playlistDatas}
+                    operatingIndex={-1}
+                    showing={this.state.showingDialogs.playlist}
+                    onCancel={this.handleDialogCancel.bind(this, "playlist")}
+                />
+
+                <ContextMenu
+                    showing={this.state.showingContextMenus.playlist}
+                >
+                    <ContextMenuItem
+                        text="Edit Playlist"
+                        key="Edit Playlist"
+                        onClick={this.handleEditPlaylist.bind(this)}
+                        showing={true}
+                    />
+                </ContextMenu>
             </div>
         );
     }

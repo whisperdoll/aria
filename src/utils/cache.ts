@@ -1,6 +1,6 @@
 import * as path from "path";
 import * as fs from "fs";
-import { getUserDataPath, bigintStatSync } from "./utils";
+import { getUserDataPath, bigintStatSync, jsonToMap, mapToJson } from "./utils";
 import { Metadata } from "./datatypes"
 import { SafeWriter } from "./safewriter";
 import * as mm from "music-metadata";
@@ -17,11 +17,11 @@ export class FileCache
     private static cacheFilename = path.join(getUserDataPath(), "songs.cache");
     private static cacheFid : string;
     private static filenameStats = new Map<string, FileInfo>();
-    public static metadata : { [fid : string] : Metadata };
+    public static metadata : Map<string, Metadata> = new Map();
     private static lastWrite : number = 0;
     private static writeDelay : number = 10000;
     private static writingPic = new Map<string, boolean>();
-    private static queue : { filename : string, fid : string, onupdate : (data : Metadata) => any }[] = [];
+    private static queue : { filename : string, fid : string, onupdate : (data : Metadata, fid : string) => any }[] = [];
     private static working : number = 0;
     private static workingAllowed : number = 4;
 
@@ -50,13 +50,13 @@ export class FileCache
         return this.getInfo(filename).fid;
     }
 
-    public static getMetadata(filename : string, fid : string, onupdate : (data : Metadata) => any, force: boolean = false) : void
+    public static getMetadata(filename : string, fid : string, onupdate : (data : Metadata, fid: string) => any, force: boolean = false) : void
     {
-        let cached = this.metadata[fid];
+        let cached = this.metadata.get(fid);
 
         if (cached && !force)
         {
-            onupdate(cached);
+            onupdate(cached, fid);
             return;
         }
 
@@ -70,7 +70,7 @@ export class FileCache
 
         let ret = () =>
         {
-            onupdate(this.metadata[fid]);
+            onupdate(this.metadata.get(fid) as Metadata, fid);
             this.working--;
             if (this.queue.length > 0)
             {
@@ -89,28 +89,30 @@ export class FileCache
 
         let updateMetadata = (metadata : mm.IAudioMetadata, callback? : () => any) =>
         {
-            if (!this.metadata[fid])
+            if (!this.metadata.get(fid))
             {
                 //console.log("creating metadata entry for " + filename);
-                this.metadata[fid] =
+                this.metadata.set(fid,
                 {
                     title: "<unknown title>",
                     artist: "<unknown artist>",
                     album: "<unknown album>",
                     length: 0,
                     picture: "",
-                    plays: this.metadata[fid] ? this.metadata[fid].plays : 0,
+                    plays: 0,
                     track: 0
-                };
+                });
             }
+            
+            let md = this.metadata.get(fid) as Metadata;
 
             ////console.log(metadata);
 
-            if (metadata.common.title) this.metadata[fid].title = metadata.common.title;
-            if (metadata.common.artist) this.metadata[fid].artist = metadata.common.artist;
-            if (metadata.common.track && metadata.common.track.no) this.metadata[fid].track = metadata.common.track.no;
-            if (metadata.common.album) this.metadata[fid].album = metadata.common.album;
-            if (metadata.format.duration) this.metadata[fid].length = metadata.format.duration;
+            if (metadata.common.title) md.title = metadata.common.title;
+            if (metadata.common.artist) md.artist = metadata.common.artist;
+            if (metadata.common.track && metadata.common.track.no) md.track = metadata.common.track.no;
+            if (metadata.common.album) md.album = metadata.common.album;
+            if (metadata.format.duration) md.length = metadata.format.duration;
 
             if (metadata.common.picture && metadata.common.picture[0])
             {
@@ -123,7 +125,7 @@ export class FileCache
 
                     //console.log("checking for matching src: \n" + src + "\nvs\n" + this.metadata[fid].picture, src === this.metadata[fid].picture);
                     
-                    if (src !== this.metadata[fid].picture)
+                    if (src !== md.picture)
                     {
                         //console.warn("nonmatching for " + filename + " (" + fid + ")\n" + src + "\nvs\n" + this.metadata[fid].picture);
                         this.writingPic.set(filename, true);
@@ -134,7 +136,7 @@ export class FileCache
                                 throw err;
                             }
     
-                            this.metadata[fid].picture = src;
+                            md.picture = src;
                             //console.log("wrote pic for: " + filename, this.metadata[fid].picture);
                             this.writingPic.set(filename, false);
                             callback && callback();
@@ -160,7 +162,7 @@ export class FileCache
         });
     }
 
-    public static loadMetadata() : void
+    public static loadMetadata() : Map<string, Metadata>
     {
         let data;
 
@@ -183,16 +185,17 @@ export class FileCache
 
         try
         {
-            this.metadata = JSON.parse(data);
+            this.metadata = jsonToMap(JSON.parse(data));
         }
         catch (err)
         {
-            this.metadata = {};
-            fs.writeFileSync(this.cacheFilename, JSON.stringify(this.metadata), "utf8");
+            this.metadata = new Map();
+            fs.writeFileSync(this.cacheFilename, JSON.stringify(mapToJson(this.metadata)), "utf8");
         }
 
         console.log("loaded metadata", this.metadata);
         this.cacheFid = bigintStatSync(this.cacheFilename).ino.toString();
+        return this.metadata;
     }
 
     public static writeCache(cb? : (err : Error | null) => void) : void
@@ -202,7 +205,7 @@ export class FileCache
         if (now - this.lastWrite > this.writeDelay)
         {
             console.log("writing cache...");
-            SafeWriter.write(this.cacheFilename, JSON.stringify(this.metadata), (err) =>
+            SafeWriter.write(this.cacheFilename, JSON.stringify(mapToJson(this.metadata)), (err) =>
             {
                 console.log("wrote cache (" + (Date.now() - now).toString() + "ms)");
                 cb && cb(err);

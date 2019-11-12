@@ -44,6 +44,16 @@ export interface PlaylistPath
     sort? : string;
 };
 
+export function copyPlaylistPath(from: PlaylistPath): PlaylistPath
+{
+    return {
+        path: from.path,
+        exclude: from.exclude,
+        filter: from.filter,
+        sort: from.sort
+    };
+}
+
 export interface PlaylistData
 {
     name : string;
@@ -52,3 +62,27 @@ export interface PlaylistData
     sort : string;
     created : number;
 };
+
+export function emptyPlaylistData(): PlaylistData
+{
+    return {
+        created: Date.now(),
+        filter: "",
+        name: "",
+        paths: [],
+        sort: ""
+    };
+}
+
+export function copyPlaylistData(from: PlaylistData): PlaylistData
+{
+    let copy: PlaylistData = {
+        created: from.created,
+        filter: from.filter,
+        name: from.name,
+        paths: from.paths.map(p => copyPlaylistPath(p)),
+        sort: from.sort
+    };
+
+    return copy;
+}

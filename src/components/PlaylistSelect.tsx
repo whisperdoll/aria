@@ -6,6 +6,7 @@ interface Props
 {
     playlistDatas: PlaylistData[];
     onSelect: (data: PlaylistData) => any;
+    onContextMenu: (data: PlaylistData) => any;
 }
 
 interface State
@@ -28,6 +29,11 @@ export default class PlaylistSelect extends React.Component<Props, State>
         this.props.onSelect(data);
     }
 
+    handleContextMenu(data: PlaylistData): void
+    {
+        this.props.onContextMenu(data);
+    }
+
     render()
     {
         let items = this.props.playlistDatas.map((data: PlaylistData) =>
@@ -37,6 +43,7 @@ export default class PlaylistSelect extends React.Component<Props, State>
                     className="item"
                     key={data.name}
                     onDoubleClick={this.handleClick.bind(this, data)}
+                    onContextMenu={this.handleContextMenu.bind(this, data)}
                 >
                     {data.name}
                 </div>

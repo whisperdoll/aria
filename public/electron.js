@@ -1,5 +1,6 @@
 const electron = require('electron');
 const app = electron.app;
+const globalShortcut = electron.globalShortcut;
 const BrowserWindow = electron.BrowserWindow;
 
 const path = require('path');
@@ -24,6 +25,21 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   }
   mainWindow.on('closed', () => mainWindow = null);
+
+  globalShortcut.register("MediaNextTrack", () =>
+  {
+    mainWindow.webContents.send("app-command", "media-nexttrack");
+  });
+
+  globalShortcut.register("MediaPreviousTrack", () =>
+  {
+    mainWindow.webContents.send("app-command", "media-previoustrack");
+  });
+
+  globalShortcut.register("MediaPlayPause", () =>
+  {
+    mainWindow.webContents.send("app-command", "media-play-pause");
+  });
 }
 
 app.on('ready', createWindow);
@@ -38,4 +54,9 @@ app.on('activate', () => {
   if (mainWindow === null) {
     createWindow();
   }
+});
+
+app.on("will-quit", () =>
+{
+  globalShortcut.unregisterAll();
 });

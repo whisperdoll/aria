@@ -1,7 +1,7 @@
 import React from 'react';
 import "./PlaylistItem.scss";
-import { Metadata, DefaultMetadata } from '../utils/datatypes';
-import { FileCache, FileInfo } from "../utils/cache";
+import { Metadata } from '../utils/datatypes';
+import { FileInfo } from "../utils/cache";
 const defaultThumbnail = require("../assets/default.png");
 
 interface Props
@@ -9,12 +9,13 @@ interface Props
     fileInfo: FileInfo;
     index: number;
     onClick: (itemInfo: FileInfo, e: React.MouseEvent) => any;
+    onDoubleClick: (itemInfo: FileInfo, e: React.MouseEvent) => any;
     selected: boolean;
+    metadata: Metadata;
 }
 
 interface State
 {
-    metadata: Metadata
 }
 
 export default class PlaylistItem extends React.Component<Props, State>
@@ -23,34 +24,27 @@ export default class PlaylistItem extends React.Component<Props, State>
     {
         super(props);
         this.state = {
-            metadata: DefaultMetadata
         };
     }
     
     componentDidMount()
     {
-        FileCache.getMetadata(
-            this.props.fileInfo.filename,
-            this.props.fileInfo.fid,
-            (metadata) =>
-            {
-                this.setState({
-                    ...this.state,
-                    metadata
-                });
-            }
-        );
     }
 
     getSubtitle(): string
     {
-        return this.state.metadata.artist + " — " + this.state.metadata.album +
-            (this.state.metadata.track ? "[" + this.state.metadata.track.toString() + "]" : "");
+        return this.props.metadata.artist + " — " + this.props.metadata.album +
+            (this.props.metadata.track ? "[" + this.props.metadata.track.toString() + "]" : "");
     }
 
     handleClick(e: React.MouseEvent): void
     {
         this.props.onClick(this.props.fileInfo, e);
+    }
+
+    handleDoubleClick(e: React.MouseEvent): void
+    {
+        this.props.onDoubleClick(this.props.fileInfo, e);
     }
 
     render()
@@ -67,15 +61,16 @@ export default class PlaylistItem extends React.Component<Props, State>
                 className={className}
                 onClick={this.handleClick.bind(this)}
                 onContextMenu={this.handleClick.bind(this)}
+                onDoubleClick={this.handleDoubleClick.bind(this)}
             >
                 <img
                     className="thumbnail"
-                    src={this.state.metadata.picture || defaultThumbnail}
+                    src={this.props.metadata.picture || defaultThumbnail}
                     alt="thumbnail"
                 />
                 <div className="shadow"></div>
                 <div className="labels">
-                    <div className="primaryLabel">{ this.state.metadata.title }</div>
+                    <div className="primaryLabel">{ this.props.metadata.title }</div>
                     <div className="secondaryLabel">{ this.getSubtitle() }</div>
                 </div>
             </div>
