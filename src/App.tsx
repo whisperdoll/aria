@@ -1,7 +1,7 @@
 import React from 'react';
 import './App.scss';
 import Playlist from './components/Playlist';
-import { getUserDataPath, endsWith, array_copy, mod } from './utils/utils';
+import { getUserDataPath, endsWith, array_copy, mod, mergeSorted, SortFunction } from './utils/utils';
 import { FileCache, FileInfo } from "./utils/cache";
 import * as fs from "fs";
 import * as path from "path";
@@ -12,6 +12,8 @@ import * as Electron from "electron";
 import PlaylistDialog from './components/PlaylistDialog/PlaylistDialog';
 import ContextMenu from './components/ContextMenu';
 import ContextMenuItem from './components/ContextMenuItem';
+import FilterBox from './components/FilterBox';
+import Filter, { FilterInfo } from './components/Filter';
 
 interface Props
 {
@@ -19,8 +21,9 @@ interface Props
 
 interface State
 {
-    filter: string;
-    fileInfos: FileInfo[];
+    filter: FilterInfo;
+    itemList: FileInfo[];
+    visibleList: FileInfo[];
     selection: Set<FileInfo>;
     playlistDatas: PlaylistData[];
     playing: boolean;
@@ -52,8 +55,12 @@ export default class App extends React.Component<Props, State>
         }
 
         this.state = {
-            filter: "",
-            fileInfos: [],
+            filter: {
+                appliedPart: "",
+                previewPart: ""
+            },
+            itemList: [],
+            visibleList: [],
             selection: new Set(),
             playlistDatas: [],
             playing: false,
@@ -88,12 +95,14 @@ export default class App extends React.Component<Props, State>
             return AllowedExtensions.some(e => endsWith(f, "." + e));
         };
 
+        FileCache.clearMetadataQueue();
+
         let fileInfos: FileInfo[] = [];
 
         let push = (info: FileInfo): void =>
         {
             fileInfos.push(info);
-            FileCache.getMetadata(info.filename, info.fid, (metadata, fid) =>
+            FileCache.getMetadata(info, (metadata, fileInfo) =>
             {
                 this.setState({
                     ...this.state,
@@ -114,21 +123,66 @@ export default class App extends React.Component<Props, State>
             }
             else
             {
-                fs.readdirSync(pathInfo.path)
+                let infos = fs.readdirSync(pathInfo.path)
                     .filter(f => filenameAllowed(f))
-                    .map(f => FileCache.getInfo(path.join(pathInfo.path, f)))
-                    .forEach(fi => push(fi));
+                    .map(f => FileCache.getInfo(path.join(pathInfo.path, f)));
+
+                if (pathInfo.sort)
+                {
+                    let sortStrings = pathInfo.sort.split(",");
+                    infos = mergeSorted(infos, this.getSortFunctionByCriteria(sortStrings));
+                }
+
+                infos.forEach(info => push(info));
             }
         });
 
         this.playlistData = playlistData;
 
+        if (this.playlistData.sort)
+        {
+            let sortStrings = this.playlistData.sort.split(",");
+            fileInfos = mergeSorted(fileInfos, this.getSortFunctionByCriteria(sortStrings));
+        }
+
         this.allFileInfos = array_copy(fileInfos);
 
         this.setState({
             ...this.state,
-            fileInfos: array_copy(fileInfos)
+            itemList: fileInfos,
+            visibleList: array_copy(fileInfos)
         });
+    }
+
+    private getSortFunctionByCriteria(sortStrings : string[]) : SortFunction<FileInfo>
+    {
+        return (a : FileInfo, b : FileInfo) =>
+        {    
+            for (let i = 0; i < sortStrings.length; i++)
+            {
+                let criterium = sortStrings[i].split(":")[0];
+                let order = sortStrings[i].split(":")[1] || "a";
+                let ma = this.state.metadata.get(a.fid);
+                let mb = this.state.metadata.get(b.fid);
+
+                if (!mb) return true;
+                if (!ma) return false;
+
+                let pa = (ma as any)[criterium];
+                let pb = (mb as any)[criterium];
+
+                if (pa === pb)
+                {
+                    continue;
+                }
+                else
+                {
+                    return !!(+(pa >= pb) ^ +(order[0] === "a")); // lol huh ???
+                }
+            }
+
+            return false;
+        };
     }
     
     componentDidMount()
@@ -159,16 +213,16 @@ export default class App extends React.Component<Props, State>
             else if (e.shiftKey)
             {
                 let anchor: FileInfo;
-                let i0 = this.state.fileInfos.indexOf(itemInfo);
+                let i0 = this.state.visibleList.indexOf(itemInfo);
                 let dist = (info: FileInfo) =>
                 {
-                    let i1 = this.state.fileInfos.indexOf(info);
+                    let i1 = this.state.visibleList.indexOf(info);
                     return Math.abs(i1 - i0);
                 };
 
                 if (e.ctrlKey)
                 {
-                    let min: number = this.state.fileInfos.length;
+                    let min: number = this.state.visibleList.length;
                     let minInfo: FileInfo = itemInfo;
 
                     this.state.selection.forEach((compareInfo) =>
@@ -201,7 +255,7 @@ export default class App extends React.Component<Props, State>
                     anchor = maxInfo;
                 }
 
-                let i1 = this.state.fileInfos.indexOf(anchor);
+                let i1 = this.state.visibleList.indexOf(anchor);
                 if (i0 > i1)
                 {
                     let tmp = i0;
@@ -211,7 +265,7 @@ export default class App extends React.Component<Props, State>
 
                 for (let i = i0; i <= i1; i++)
                 {
-                    s.add(this.state.fileInfos[i]);
+                    s.add(this.state.visibleList[i]);
                 }
             }
             else if (e.ctrlKey)
@@ -280,18 +334,27 @@ export default class App extends React.Component<Props, State>
 
     handlePlayPause()
     {
-        console.log(this.state);
         if (!this.state.playing)
         {
-            if (this.state.selection.size > 0)
+            if (this.state.currentItem)
             {
-                let items: FileInfo[] = [];
-                this.state.selection.forEach(s => items.push(s));
                 this.setState({
                     ...this.state,
-                    currentItem: items[0],
                     playing: true
                 });
+            }
+            else
+            {
+                if (this.state.selection.size > 0)
+                {
+                    let items: FileInfo[] = [];
+                    this.state.selection.forEach(s => items.push(s));
+                    this.setState({
+                        ...this.state,
+                        currentItem: items[0],
+                        playing: true
+                    });
+                }
             }
         }
         else
@@ -301,7 +364,6 @@ export default class App extends React.Component<Props, State>
                 playing: false
             });
         }
-        console.log(this.state);
     }
 
     handlePlaybackStart()
@@ -309,8 +371,7 @@ export default class App extends React.Component<Props, State>
         if (!this.state.currentItem) return;
 
         FileCache.getMetadata(
-            this.state.currentItem.filename,
-            this.state.currentItem.fid,
+            this.state.currentItem,
             (metadata, fid) =>
             {
                 this.setState({
@@ -325,20 +386,20 @@ export default class App extends React.Component<Props, State>
     {
         if (!this.state.currentItem) return null;
 
-        let index = this.state.fileInfos.indexOf(this.state.currentItem);
-        index = mod(index - 1, this.state.fileInfos.length);
+        let index = this.state.itemList.indexOf(this.state.currentItem);
+        index = mod(index - 1, this.state.itemList.length);
 
-        return this.state.fileInfos[index];
+        return this.state.itemList[index];
     }
 
     get nextItem(): FileInfo | null
     {
         if (!this.state.currentItem) return null;
 
-        let index = this.state.fileInfos.indexOf(this.state.currentItem);
-        index = mod(index + 1, this.state.fileInfos.length);
+        let index = this.state.itemList.indexOf(this.state.currentItem);
+        index = mod(index + 1, this.state.itemList.length);
 
-        return this.state.fileInfos[index];
+        return this.state.itemList[index];
     }
 
     handlePlaybackFinish()
@@ -384,24 +445,52 @@ export default class App extends React.Component<Props, State>
         });
     }
 
+    handleFilter(filter: FilterInfo): void
+    {
+        let x = Filter.apply(filter, this.allFileInfos, this.state.metadata);
+
+        this.setState({
+            ...this.state,
+            filter,
+            visibleList: x.visibleList,
+            itemList: x.itemList
+        });
+    }
+
     render()
     {
-        let currentMetadata = DefaultMetadata;
+        let currentMetadata = DefaultMetadata();
 
         if (this.state.currentItem && this.state.metadata.get(this.state.currentItem.fid))
         {
             currentMetadata = this.state.metadata.get(this.state.currentItem.fid) as Metadata;
         }
 
+        let albumSrc = this.state.currentItem ? currentMetadata.picture: "";
+
         return (
             <div id="container">
-                <div id="background"></div>
-                <Playlist
-                    fileInfos={this.state.fileInfos}
+                <img
+                    id="album"
+                    className="fullSize"
+                    src={albumSrc}
+                />
+                <div
+                    id="albumOverlay"
+                    className="fullSize"
+                />
+
+                <FilterBox
                     filter={this.state.filter}
+                    onFilter={this.handleFilter.bind(this)}
+                />
+
+                <Playlist
+                    fileInfos={this.state.visibleList}
                     onItemClick={this.handleItemClick.bind(this)}
                     onItemDoubleClick={this.handleItemDoubleClick.bind(this)}
                     selection={this.state.selection}
+                    currentItem={this.state.currentItem}
                     metadata={this.state.metadata}
                 />
 

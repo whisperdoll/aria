@@ -18,6 +18,7 @@ interface Props
 
 interface State
 {
+    volume: number;
 }
 
 export default class BottomBar extends React.Component<Props, State>
@@ -25,25 +26,32 @@ export default class BottomBar extends React.Component<Props, State>
     constructor(props: Props)
     {
         super(props);
-    }
-    
-    componentDidMount()
-    {
+        this.state = {
+            volume: 1
+        };
     }
 
-    handlePrevious()
+    handlePrevious(): void
     {
         this.props.onPrevious();
     }
 
-    handlePlayPause()
+    handlePlayPause(): void
     {
         this.props.onPlayPause();
     }
 
-    handleNext()
+    handleNext(): void
     {
         this.props.onNext();
+    }
+
+    handleVolumeChange(e: React.ChangeEvent<HTMLInputElement>): void
+    {
+        this.setState({
+            ...this.state,
+            volume: parseFloat(e.target.value)
+        });
     }
 
     render()
@@ -77,6 +85,8 @@ export default class BottomBar extends React.Component<Props, State>
                         min="0"
                         max="1"
                         step="0.01"
+                        value={this.state.volume}
+                        onChange={this.handleVolumeChange.bind(this)}
                     />
                     <button
                         className="svgButton"
@@ -85,7 +95,7 @@ export default class BottomBar extends React.Component<Props, State>
                 </div>
                 <WaveBar
                     currentItem={this.props.currentItem}
-                    volume={1}
+                    volume={this.state.volume}
                     onPlaybackStart={this.props.onPlaybackStart}
                     onPlaybackFinish={this.props.onPlaybackFinish}
                     playing={this.props.playing}

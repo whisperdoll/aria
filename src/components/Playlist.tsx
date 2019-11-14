@@ -7,11 +7,11 @@ import { Metadata, DefaultMetadata } from '../utils/datatypes';
 interface Props
 {
     fileInfos: FileInfo[];
-    filter: string;
     onItemClick: (itemInfo: FileInfo, e: React.MouseEvent) => any;
     onItemDoubleClick: (itemInfo: FileInfo, e: React.MouseEvent) => any;
     selection: Set<FileInfo>;
-    metadata: Map<string, Metadata>
+    metadata: Map<string, Metadata>;
+    currentItem: FileInfo | null;
 }
 
 interface State
@@ -49,7 +49,8 @@ export default class Playlist extends React.Component<Props, State>
                     onClick={this.handleClick.bind(this)}
                     onDoubleClick={this.handleDoubleClick.bind(this)}
                     selected={this.props.selection.has(fileInfo)}
-                    metadata={this.props.metadata.get(fileInfo.fid) || DefaultMetadata}
+                    playing={this.props.currentItem === fileInfo}
+                    metadata={this.props.metadata.get(fileInfo.fid) || (DefaultMetadata())}
                 />
             );
         });

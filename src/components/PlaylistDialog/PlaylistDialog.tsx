@@ -35,7 +35,7 @@ export default class PlaylistDialog extends React.Component<Props, State>
         this.updateStateFromProps(this.props);
     }
 
-    componentWillReceiveProps(props: Props)
+    UNSAFE_componentWillReceiveProps(props: Props)
     {
         this.updateStateFromProps(props);
     }

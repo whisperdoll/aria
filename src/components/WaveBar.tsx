@@ -88,11 +88,11 @@ export default class WaveBar extends React.Component<Props, State>
         });
     }
 
-    componentWillReceiveProps(props: Props)
+    UNSAFE_componentWillReceiveProps(props: Props)
     {
         if (props.volume !== this.waveSurfer.volume)
         {
-            this.waveSurfer.volume = props.volume;
+            this.waveSurfer.setVolume(props.volume);
         }
 
         if (props.currentItem !== this.currentItem)
@@ -131,7 +131,6 @@ export default class WaveBar extends React.Component<Props, State>
 
     render()
     {
-        console.log("waveform render");
         return (
             <div
                 id="waveBar"

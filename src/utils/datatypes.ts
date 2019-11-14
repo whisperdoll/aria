@@ -11,17 +11,21 @@ export interface Metadata
     picture : string,
     plays : number,
     track : number
+    modified : number;
 }
 
-export const DefaultMetadata: Metadata =
+export function DefaultMetadata(): Metadata
 {
-    title: "--",
-    artist: "--",
-    album: "--",
-    length: 0,
-    picture: defaultPic,
-    plays: 0,
-    track: 0
+    return {
+        title: "--",
+        artist: "--",
+        album: "--",
+        length: 0,
+        picture: defaultPic,
+        plays: 0,
+        track: 0,
+        modified: 0
+    };
 };
 
 export class PlaylistItemInfo

@@ -1,0 +1,57 @@
+.filterContainer, .filter
+{
+    margin: 0;
+    box-sizing: border-box;
+    background-color: rgba(0,0,0,0.8);
+    border: 0;
+    border-bottom: 1px dotted #999;
+    color: #ddd;
+    padding: 0 12px;
+    font-size: 18px;
+    
+    &.filterContainer
+    {
+        background-color: transparent;
+    
+        .filter
+        {
+            width: 100%;
+        }
+    }
+
+    .tag
+    {
+        margin: 0 8px;
+        padding: 4px 12px;
+        background-color: #444;
+        border-radius: 16px;
+        color: #ccc;
+        display: inline-block;
+        font-size: 14px;
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        user-select: none;
+        cursor: pointer;
+    
+        .text
+        {
+            display: inline-block;      
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: -2px;
+        }
+
+        .remove
+        {
+            display: inline-block;
+            margin-left: 8px;
+
+            &:hover
+            {
+                color: #fff;
+            }
+        }
+    }
+}

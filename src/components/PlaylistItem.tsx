@@ -11,6 +11,7 @@ interface Props
     onClick: (itemInfo: FileInfo, e: React.MouseEvent) => any;
     onDoubleClick: (itemInfo: FileInfo, e: React.MouseEvent) => any;
     selected: boolean;
+    playing: boolean;
     metadata: Metadata;
 }
 
@@ -54,6 +55,10 @@ export default class PlaylistItem extends React.Component<Props, State>
         if (this.props.selected)
         {
             className += " selected";
+        }
+        if (this.props.playing)
+        {
+            className += " playing";
         }
 
         return (

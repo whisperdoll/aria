@@ -1,7 +1,7 @@
 import * as path from "path";
 import * as fs from "fs";
 import { getUserDataPath, bigintStatSync, jsonToMap, mapToJson } from "./utils";
-import { Metadata } from "./datatypes"
+import { Metadata, DefaultMetadata } from "./datatypes"
 import { SafeWriter } from "./safewriter";
 import * as mm from "music-metadata";
 
@@ -21,7 +21,7 @@ export class FileCache
     private static lastWrite : number = 0;
     private static writeDelay : number = 10000;
     private static writingPic = new Map<string, boolean>();
-    private static queue : { filename : string, fid : string, onupdate : (data : Metadata, fid : string) => any }[] = [];
+    private static queue : { fileInfo: FileInfo, onupdate : (data : Metadata, fileInfo: FileInfo) => any }[] = [];
     private static working : number = 0;
     private static workingAllowed : number = 4;
 
@@ -50,19 +50,19 @@ export class FileCache
         return this.getInfo(filename).fid;
     }
 
-    public static getMetadata(filename : string, fid : string, onupdate : (data : Metadata, fid: string) => any, force: boolean = false) : void
+    public static getMetadata(fileInfo: FileInfo, onupdate : (data : Metadata, fileInfo: FileInfo) => any, force: boolean = false) : void
     {
-        let cached = this.metadata.get(fid);
+        let cached = this.metadata.get(fileInfo.fid);
 
         if (cached && !force)
         {
-            onupdate(cached, fid);
+            onupdate(cached, fileInfo);
             return;
         }
 
         if (this.working === this.workingAllowed)
         {
-            this.queue.push({ filename, fid, onupdate });
+            this.queue.push({ fileInfo, onupdate });
             return;
         }
 
@@ -70,14 +70,14 @@ export class FileCache
 
         let ret = () =>
         {
-            onupdate(this.metadata.get(fid) as Metadata, fid);
+            onupdate(this.metadata.get(fileInfo.fid) as Metadata, fileInfo);
             this.working--;
             if (this.queue.length > 0)
             {
                 let item = this.queue.shift();
                 if (item !== undefined)
                 {
-                    setTimeout(this.getMetadata.bind(this, item.filename, item.fid, item.onupdate), 1);
+                    setTimeout(this.getMetadata.bind(this, item.fileInfo, item.onupdate), 1);
                 }
             }
             else
@@ -89,22 +89,13 @@ export class FileCache
 
         let updateMetadata = (metadata : mm.IAudioMetadata, callback? : () => any) =>
         {
-            if (!this.metadata.get(fid))
+            if (!this.metadata.get(fileInfo.fid))
             {
                 //console.log("creating metadata entry for " + filename);
-                this.metadata.set(fid,
-                {
-                    title: "<unknown title>",
-                    artist: "<unknown artist>",
-                    album: "<unknown album>",
-                    length: 0,
-                    picture: "",
-                    plays: 0,
-                    track: 0
-                });
+                this.metadata.set(fileInfo.fid, DefaultMetadata());
             }
             
-            let md = this.metadata.get(fid) as Metadata;
+            let md = this.metadata.get(fileInfo.fid) as Metadata;
 
             ////console.log(metadata);
 
@@ -113,22 +104,23 @@ export class FileCache
             if (metadata.common.track && metadata.common.track.no) md.track = metadata.common.track.no;
             if (metadata.common.album) md.album = metadata.common.album;
             if (metadata.format.duration) md.length = metadata.format.duration;
+            md.modified = Number(fileInfo.stats.mtimeMs);
 
             if (metadata.common.picture && metadata.common.picture[0])
             {
-                if (!this.writingPic.get(filename))
+                if (!this.writingPic.get(fileInfo.fid))
                 {
                     let format = metadata.common.picture[0].format;
                     format = format.substr(format.indexOf("/") + 1);
     
-                    let src = path.join(getUserDataPath(), fid + "." + format);
+                    let src = path.join(getUserDataPath(), fileInfo.fid + "." + format);
 
                     //console.log("checking for matching src: \n" + src + "\nvs\n" + this.metadata[fid].picture, src === this.metadata[fid].picture);
                     
                     if (src !== md.picture)
                     {
                         //console.warn("nonmatching for " + filename + " (" + fid + ")\n" + src + "\nvs\n" + this.metadata[fid].picture);
-                        this.writingPic.set(filename, true);
+                        this.writingPic.set(fileInfo.fid, true);
                         SafeWriter.write(src, metadata.common.picture[0].data, (err) =>
                         {
                             if (err)
@@ -138,7 +130,7 @@ export class FileCache
     
                             md.picture = src;
                             //console.log("wrote pic for: " + filename, this.metadata[fid].picture);
-                            this.writingPic.set(filename, false);
+                            this.writingPic.set(fileInfo.fid, false);
                             callback && callback();
                         });
                     }
@@ -150,7 +142,7 @@ export class FileCache
             }
         };
 
-        mm.parseFile(filename,
+        mm.parseFile(fileInfo.filename,
         {
             duration: true
         }).then((metadata : mm.IAudioMetadata) =>
@@ -160,6 +152,11 @@ export class FileCache
                 ret();
             });
         });
+    }
+
+    public static clearMetadataQueue(): void
+    {
+        this.queue = [];
     }
 
     public static loadMetadata() : Map<string, Metadata>
