@@ -12,7 +12,7 @@ interface State
 {
 }
 
-export default class FilterBox extends React.Component<Props, State>
+export default class FilterBox extends React.PureComponent<Props, State>
 {
     constructor(props: Props)
     {

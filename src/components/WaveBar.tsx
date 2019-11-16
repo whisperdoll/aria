@@ -13,6 +13,7 @@ interface Props
     onPlaybackStart: () => any;
     onPlaybackFinish: () => any;
     playing: boolean;
+    onTimeChange: (currentSeconds: number, durationSeconds: number) => any;
 }
 
 interface State
@@ -25,6 +26,7 @@ export default class WaveBar extends React.Component<Props, State>
     private currentItem: FileInfo | null = null;
     private playing: boolean = false;
     private container: React.RefObject<HTMLDivElement>;
+    private awaitingPlayback: FileInfo | null = null;
 
     constructor(props: Props)
     {
@@ -41,23 +43,6 @@ export default class WaveBar extends React.Component<Props, State>
     private get cachePath() : string
     {
         return path.join(getUserDataPath() + "/pcm/");
-    }
-
-    private play(itemInfo: FileInfo | null)
-    {
-        if (!itemInfo) return;
-        
-        if (this.currentItem === itemInfo)
-        {
-            // restart //
-            this.waveSurfer.seekTo(0);
-        }
-        else
-        {
-            // play //
-            this.currentItem = itemInfo;
-            this.waveSurfer.load(this.currentItem.filename.replace(/#/g, "%23"));
-        }
     }
     
     componentDidMount()
@@ -78,13 +63,16 @@ export default class WaveBar extends React.Component<Props, State>
 
         this.waveSurfer.on("waveform-ready", () =>
         {
-            this.waveSurfer.play();
-            this.props.onPlaybackStart();
         });
 
         this.waveSurfer.on("finish", () =>
         {
             this.props.onPlaybackFinish();
+        });
+
+        this.waveSurfer.on("audioprocess", () =>
+        {
+            this.props.onTimeChange(this.waveSurfer.getCurrentTime(), this.waveSurfer.getDuration());
         });
     }
 
@@ -114,19 +102,59 @@ export default class WaveBar extends React.Component<Props, State>
         }
     }
 
+    private play(itemInfo: FileInfo | null)
+    {
+        if (!itemInfo) return;
+        
+        if (this.currentItem === itemInfo)
+        {
+            // restart //
+            this.waveSurfer.seekTo(0);
+        }
+        else
+        {
+            // play //
+            if (this.awaitingPlayback || (this.waveSurfer.isPlaying() && this.mediaElement.readyState === 0))
+            {
+                this.awaitingPlayback = itemInfo;
+            }
+            else if (!this.awaitingPlayback)
+            {
+                this.currentItem = itemInfo;
+                this.waveSurfer.load(this.currentItem.filename.replace(/#/g, "%23"));
+                this.mediaElement.addEventListener("canplay", () =>
+                {
+                    if (this.mediaElement.readyState === 0) return;
+
+                    if (this.awaitingPlayback)
+                    {
+                        let item = this.awaitingPlayback;
+                        this.awaitingPlayback = null;
+                        this.play(item);
+                    }
+                    else if (this.props.playing)
+                    {
+                        this.waveSurfer.play();
+                        this.props.onPlaybackStart();
+                    }
+                });
+            }
+        }
+    }
+
     get mediaElement() : HTMLMediaElement
     {
         return this.waveSurfer.backend.media;
     }
 
-    get trulyPlaying() : boolean
-    {
-        return this.mediaElement.currentTime > 0 && !this.mediaElement.paused && !this.mediaElement.ended && this.mediaElement.readyState > 2;
-    }
-
     shouldComponentUpdate(): boolean
     {
         return false;
+    }
+
+    public restartSong(): void
+    {
+        this.play(this.currentItem);
     }
 
     render()
@@ -135,8 +163,7 @@ export default class WaveBar extends React.Component<Props, State>
             <div
                 id="waveBar"
                 ref={this.container}
-            >
-            </div>
+            />
         );
     }
 }

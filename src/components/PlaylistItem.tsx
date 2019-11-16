@@ -19,7 +19,7 @@ interface State
 {
 }
 
-export default class PlaylistItem extends React.Component<Props, State>
+export default class PlaylistItem extends React.PureComponent<Props, State>
 {
     constructor(props: Props)
     {

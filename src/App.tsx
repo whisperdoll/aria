@@ -1,7 +1,7 @@
 import React from 'react';
 import './App.scss';
 import Playlist from './components/Playlist';
-import { getUserDataPath, endsWith, array_copy, mod, mergeSorted, SortFunction } from './utils/utils';
+import { getUserDataPath, endsWith, array_copy, mod, mergeSorted, SortFunction, array_shuffle } from './utils/utils';
 import { FileCache, FileInfo } from "./utils/cache";
 import * as fs from "fs";
 import * as path from "path";
@@ -14,6 +14,7 @@ import ContextMenu from './components/ContextMenu';
 import ContextMenuItem from './components/ContextMenuItem';
 import FilterBox from './components/FilterBox';
 import Filter, { FilterInfo } from './components/Filter';
+import PlaylistItem from './components/PlaylistItem';
 
 interface Props
 {
@@ -28,22 +29,32 @@ interface State
     playlistDatas: PlaylistData[];
     playing: boolean;
     currentItem: FileInfo | null;
+    currentSeconds: number;
+    durationSeconds: number;
     metadata: Map<string, Metadata>;
+    shuffled: boolean;
     showingDialogs: {
         playlist: boolean
     };
-    showingContextMenus: {
-        playlist: boolean
+    contextMenus: {
+        [key: string]: {
+            showing: boolean,
+            x: number,
+            y: number,
+            context: any
+        }
     };
 }
 
 export const AllowedExtensions = [ "mp3", "m4a" ];
 
-export default class App extends React.Component<Props, State>
+export default class App extends React.PureComponent<Props, State>
 {
     private playlistData: PlaylistData | null = null;
     private allFileInfos: FileInfo[] = [];
     private contextData: PlaylistData | null = null;
+    private bottomBar: React.RefObject<BottomBar>;
+    private playOrder: number[] = []; // array of indeces
 
     constructor(props: Props)
     {
@@ -65,17 +76,46 @@ export default class App extends React.Component<Props, State>
             playlistDatas: [],
             playing: false,
             currentItem: null,
+            currentSeconds: 0,
+            durationSeconds: 0,
             metadata: new Map(FileCache.loadMetadata()),
+            shuffled: false,
             showingDialogs: {
                 playlist: false
             },
-            showingContextMenus: {
-                playlist: false
+            contextMenus: {
+                playlist: {
+                    showing: false,
+                    x: 0,
+                    y: 0,
+                    context: null
+                }
             }
         };
 
+        this.bottomBar = React.createRef();
+
+        FileCache.onQueueFinished = this.handleCacheQueueFinished.bind(this);
+
         let ipcRenderer = Electron.ipcRenderer;
         ipcRenderer.on("app-command", this.processAppCommand.bind(this));
+
+        this.handleCacheQueueFinished = this.handleCacheQueueFinished.bind(this);
+        this.handleDialogCancel = this.handleDialogCancel.bind(this);
+        this.handleEditPlaylist = this.handleEditPlaylist.bind(this);
+        this.handleFilter = this.handleFilter.bind(this);
+        this.handleItemClick = this.handleItemClick.bind(this);
+        this.handleItemDoubleClick = this.handleItemDoubleClick.bind(this);
+        this.handleNext = this.handleNext.bind(this);
+        this.handlePlayPause = this.handlePlayPause.bind(this);
+        this.handlePlaybackFinish = this.handlePlaybackFinish.bind(this);
+        this.handlePlaybackStart = this.handlePlaybackStart.bind(this);
+        this.handlePlaylistAccept = this.handlePlaylistAccept.bind(this);
+        this.handlePlaylistContextMenu = this.handlePlaylistContextMenu.bind(this);
+        this.handlePlaylistSelect = this.handlePlaylistSelect.bind(this);
+        this.handlePrevious = this.handlePrevious.bind(this);
+        this.handleTimeChange = this.handleTimeChange.bind(this);
+        this.handleShuffleToggle = this.handleShuffleToggle.bind(this);
     }
 
     private processAppCommand(e : any, command : string) : void
@@ -96,20 +136,8 @@ export default class App extends React.Component<Props, State>
         };
 
         FileCache.clearMetadataQueue();
-
-        let fileInfos: FileInfo[] = [];
-
-        let push = (info: FileInfo): void =>
-        {
-            fileInfos.push(info);
-            FileCache.getMetadata(info, (metadata, fileInfo) =>
-            {
-                this.setState({
-                    ...this.state,
-                    metadata: new Map(FileCache.metadata)
-                });
-            });
-        };
+        this.playlistData = playlistData;
+        this.allFileInfos = [];
 
         playlistData.paths.forEach((pathInfo) =>
         {
@@ -118,7 +146,18 @@ export default class App extends React.Component<Props, State>
             {
                 if (filenameAllowed(pathInfo.path))
                 {
-                    push(info);
+                    FileCache.getMetadata(info, (metadata) =>
+                    {
+                        if (Filter.matchesFilter(playlistData.filter, metadata))
+                        {
+                            this.allFileInfos.push(info);
+                            this.setState({
+                                ...this.state,
+                                metadata: new Map(FileCache.metadata)
+                            });
+                            this.filterAndSortAll();
+                        }
+                    });
                 }
             }
             else
@@ -127,31 +166,76 @@ export default class App extends React.Component<Props, State>
                     .filter(f => filenameAllowed(f))
                     .map(f => FileCache.getInfo(path.join(pathInfo.path, f)));
 
-                if (pathInfo.sort)
-                {
-                    let sortStrings = pathInfo.sort.split(",");
-                    infos = mergeSorted(infos, this.getSortFunctionByCriteria(sortStrings));
-                }
+                let counter = 0;
 
-                infos.forEach(info => push(info));
+                infos.forEach((info) =>
+                {
+                    FileCache.getMetadata(info, (metadata) =>
+                    {
+                        counter++;
+                        if (counter === infos.length)
+                        {
+                            this.setState({
+                                ...this.state,
+                                metadata: new Map(FileCache.metadata)
+                            });
+
+                            let goodInfos = this.filterAndSort(infos, pathInfo.sort || "", { appliedPart: pathInfo.filter || "", previewPart: "" }).itemList;
+                            this.allFileInfos.push(...goodInfos);
+                            this.filterAndSortAll();
+                        }
+                    });
+                });
             }
         });
+    }
 
-        this.playlistData = playlistData;
+    private filterAndSort(array: FileInfo[], sort: string, filter: FilterInfo): { itemList: FileInfo[], visibleList: FileInfo[] }
+    {
+        let ret: FileInfo[];
 
-        if (this.playlistData.sort)
+        if (sort)
         {
-            let sortStrings = this.playlistData.sort.split(",");
-            fileInfos = mergeSorted(fileInfos, this.getSortFunctionByCriteria(sortStrings));
+            let sortStrings = sort.split(",");
+            ret = mergeSorted(array, this.getSortFunctionByCriteria(sortStrings));
+        }
+        else
+        {
+            ret = array_copy(array);
         }
 
-        this.allFileInfos = array_copy(fileInfos);
+        return Filter.apply(filter, ret, this.state.metadata);
+    }
+
+    private filterAndSortAll(): void
+    {
+        if (!this.playlistData) return;
+
+        let filteredLists = this.filterAndSort(this.allFileInfos, this.playlistData.sort, this.state.filter);
 
         this.setState({
             ...this.state,
-            itemList: fileInfos,
-            visibleList: array_copy(fileInfos)
+            itemList: filteredLists.itemList,
+            visibleList: filteredLists.visibleList
         });
+    }
+    
+    componentDidUpdate(prevProps: Props, prevState: State)
+    {
+        if (prevState.itemList !== this.state.itemList || prevState.shuffled !== this.state.shuffled)
+        {
+            this.playOrder = this.state.itemList.map((item, i) => i);
+
+            if (this.state.shuffled)
+            {
+                array_shuffle(this.playOrder);
+            }
+        }
+    }
+
+    handleCacheQueueFinished()
+    {
+        
     }
 
     private getSortFunctionByCriteria(sortStrings : string[]) : SortFunction<FileInfo>
@@ -187,6 +271,16 @@ export default class App extends React.Component<Props, State>
     
     componentDidMount()
     {
+        document.addEventListener("click", () =>
+        {
+            let contextMenus = this.state.contextMenus;
+            // 400-3334
+            for (let key in contextMenus)
+            {
+
+            }
+        });
+
         let playlistPath = "D:\\Electron\\music\\myplaylists\\";
         let filenames = fs.readdirSync(playlistPath);
         let playlistDatas = filenames.filter(f => endsWith(f, ".playlist")).map((f) =>
@@ -326,10 +420,20 @@ export default class App extends React.Component<Props, State>
 
     handlePrevious()
     {
-        this.setState({
-            ...this.state,
-            currentItem: this.previousItem
-        });
+        if (this.state.currentSeconds > 2)
+        {
+            if (this.bottomBar.current)
+            {
+                this.bottomBar.current.restartSong();
+            }
+        }
+        else
+        {
+            this.setState({
+                ...this.state,
+                currentItem: this.previousItem
+            });
+        }
     }
 
     handlePlayPause()
@@ -382,14 +486,24 @@ export default class App extends React.Component<Props, State>
         );
     }
 
+    handleTimeChange(currentSeconds: number, durationSeconds: number): void
+    {
+        this.setState({
+            ...this.state,
+            currentSeconds,
+            durationSeconds
+        });
+    }
+
     get previousItem(): FileInfo | null
     {
         if (!this.state.currentItem) return null;
 
         let index = this.state.itemList.indexOf(this.state.currentItem);
-        index = mod(index - 1, this.state.itemList.length);
+        let orderIndex = this.playOrder.indexOf(index);
+        orderIndex = mod(orderIndex - 1, this.state.itemList.length);
 
-        return this.state.itemList[index];
+        return this.state.itemList[orderIndex];
     }
 
     get nextItem(): FileInfo | null
@@ -397,9 +511,10 @@ export default class App extends React.Component<Props, State>
         if (!this.state.currentItem) return null;
 
         let index = this.state.itemList.indexOf(this.state.currentItem);
-        index = mod(index + 1, this.state.itemList.length);
+        let orderIndex = this.playOrder.indexOf(index);
+        orderIndex = mod(orderIndex + 1, this.state.itemList.length);
 
-        return this.state.itemList[index];
+        return this.state.itemList[orderIndex];
     }
 
     handlePlaybackFinish()
@@ -415,7 +530,7 @@ export default class App extends React.Component<Props, State>
 
     }
 
-    handleDialogCancel(key: string)
+    handleDialogCancel()
     {
         this.setState({
             ...this.state,
@@ -433,14 +548,19 @@ export default class App extends React.Component<Props, State>
         console.log("editing " + this.contextData.name);
     }
 
-    handlePlaylistContextMenu(data: PlaylistData): void
+    handlePlaylistContextMenu(data: PlaylistData, x: number, y: number): void
     {
         this.contextData = data;
         this.setState({
             ...this.state,
-            showingContextMenus: {
-                ...this.state.showingContextMenus,
-                playlist: true
+            contextMenus: {
+                ...this.state.contextMenus,
+                playlist: {
+                    showing: true,
+                    x,
+                    y,
+                    context: data
+                }
             }
         });
     }
@@ -454,6 +574,14 @@ export default class App extends React.Component<Props, State>
             filter,
             visibleList: x.visibleList,
             itemList: x.itemList
+        });
+    }
+
+    handleShuffleToggle(shuffle: boolean): void
+    {
+        this.setState({
+            ...this.state,
+            shuffled: shuffle
         });
     }
 
@@ -482,13 +610,13 @@ export default class App extends React.Component<Props, State>
 
                 <FilterBox
                     filter={this.state.filter}
-                    onFilter={this.handleFilter.bind(this)}
+                    onFilter={this.handleFilter}
                 />
 
                 <Playlist
                     fileInfos={this.state.visibleList}
-                    onItemClick={this.handleItemClick.bind(this)}
-                    onItemDoubleClick={this.handleItemDoubleClick.bind(this)}
+                    onItemClick={this.handleItemClick}
+                    onItemDoubleClick={this.handleItemDoubleClick}
                     selection={this.state.selection}
                     currentItem={this.state.currentItem}
                     metadata={this.state.metadata}
@@ -496,36 +624,44 @@ export default class App extends React.Component<Props, State>
 
                 <PlaylistSelect
                     playlistDatas={this.state.playlistDatas}
-                    onSelect={this.handlePlaylistSelect.bind(this)}
-                    onContextMenu={this.handlePlaylistContextMenu.bind(this)}
+                    onSelect={this.handlePlaylistSelect}
+                    onContextMenu={this.handlePlaylistContextMenu}
                 />
 
                 <BottomBar
-                    onPrevious={this.handlePrevious.bind(this)}
-                    onPlayPause={this.handlePlayPause.bind(this)}
-                    onNext={this.handleNext.bind(this)}
+                    onPrevious={this.handlePrevious}
+                    onPlayPause={this.handlePlayPause}
+                    onNext={this.handleNext}
                     playing={this.state.playing}
                     currentItem={this.state.currentItem}
-                    onPlaybackStart={this.handlePlaybackStart.bind(this)}
-                    onPlaybackFinish={this.handlePlaybackFinish.bind(this)}
+                    onPlaybackStart={this.handlePlaybackStart}
+                    onPlaybackFinish={this.handlePlaybackFinish}
                     metadata={currentMetadata}
+                    currentSeconds={this.state.currentSeconds}
+                    durationSeconds={this.state.durationSeconds}
+                    onTimeChange={this.handleTimeChange}
+                    shuffled={this.state.shuffled}
+                    onShuffleToggle={this.handleShuffleToggle}
+                    ref={this.bottomBar}
                 />
 
                 <PlaylistDialog
-                    onAccept={this.handlePlaylistAccept.bind(this)}
+                    onAccept={this.handlePlaylistAccept}
                     playlistDatas={this.state.playlistDatas}
                     operatingIndex={-1}
                     showing={this.state.showingDialogs.playlist}
-                    onCancel={this.handleDialogCancel.bind(this, "playlist")}
+                    onCancel={this.handleDialogCancel}
                 />
 
                 <ContextMenu
-                    showing={this.state.showingContextMenus.playlist}
+                    showing={this.state.contextMenus.playlist.showing}
+                    x={this.state.contextMenus.playlist.x}
+                    y={this.state.contextMenus.playlist.y}
                 >
                     <ContextMenuItem
                         text="Edit Playlist"
                         key="Edit Playlist"
-                        onClick={this.handleEditPlaylist.bind(this)}
+                        onClick={this.handleEditPlaylist}
                         showing={true}
                     />
                 </ContextMenu>

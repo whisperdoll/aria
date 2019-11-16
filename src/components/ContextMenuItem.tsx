@@ -13,7 +13,7 @@ interface State
 {
 }
 
-export default class ContextMenuItem extends React.Component<Props, State>
+export default class ContextMenuItem extends React.PureComponent<Props, State>
 {
     constructor(props: Props)
     {

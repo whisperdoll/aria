@@ -6,13 +6,15 @@ import ContextMenuItem from './ContextMenuItem';
 interface Props
 {
     showing: boolean;
+    x: number;
+    y: number;
 }
 
 interface State
 {
 }
 
-export default class ContextMenu extends React.Component<Props, State>
+export default class ContextMenu extends React.PureComponent<Props, State>
 {
     constructor(props: Props)
     {
@@ -29,7 +31,10 @@ export default class ContextMenu extends React.Component<Props, State>
             <div
                 className="contextMenu"
                 style={{
-                    display: this.props.showing ? "" : "none"
+                    display: this.props.showing ? "" : "none",
+                    position: "absolute",
+                    left: this.props.x + "px",
+                    top: this.props.y + "px"
                 }}
             >
                 {this.props.children}

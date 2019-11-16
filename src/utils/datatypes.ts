@@ -4,48 +4,50 @@ const defaultPic = require("../assets/default.png");
 
 export interface Metadata
 {
-    title : string,
-    artist : string,
-    album : string,
-    length : number,
-    picture : string,
-    plays : number,
-    track : number
-    modified : number;
+    title: string,
+    artist: string,
+    album: string,
+    length: number,
+    picture: string,
+    plays: number,
+    track: number
+    modified: number;
+    isPlaceholder: boolean;
 }
 
-export function DefaultMetadata(): Metadata
+export function DefaultMetadata(filename?: string): Metadata
 {
     return {
-        title: "--",
+        title: filename || "--",
         artist: "--",
         album: "--",
         length: 0,
         picture: defaultPic,
         plays: 0,
         track: 0,
-        modified: 0
+        modified: 0,
+        isPlaceholder: true
     };
 };
 
 export class PlaylistItemInfo
 {
-    public readonly filename : string;
+    public readonly filename: string;
 
-    constructor(filename : string)
+    constructor(filename: string)
     {
         this.filename = filename;
     }
 };
 
-export let PlaylistSavePath : string = path.join(getUserDataPath(), "myplaylists/");
+export let PlaylistSavePath: string = path.join(getUserDataPath(), "myplaylists/");
 
 export interface PlaylistPath
 {
-    path : string;
-    exclude? : string[];
-    filter? : string;
-    sort? : string;
+    path: string;
+    exclude?: string[];
+    filter?: string;
+    sort?: string;
 };
 
 export function copyPlaylistPath(from: PlaylistPath): PlaylistPath
@@ -60,11 +62,11 @@ export function copyPlaylistPath(from: PlaylistPath): PlaylistPath
 
 export interface PlaylistData
 {
-    name : string;
-    paths : PlaylistPath[];
-    filter : string;
-    sort : string;
-    created : number;
+    name: string;
+    paths: PlaylistPath[];
+    filter: string;
+    sort: string;
+    created: number;
 };
 
 export function emptyPlaylistData(): PlaylistData

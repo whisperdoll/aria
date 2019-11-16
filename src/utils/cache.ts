@@ -21,9 +21,10 @@ export class FileCache
     private static lastWrite : number = 0;
     private static writeDelay : number = 10000;
     private static writingPic = new Map<string, boolean>();
-    private static queue : { fileInfo: FileInfo, onupdate : (data : Metadata, fileInfo: FileInfo) => any }[] = [];
+    private static queue : { fileInfo: FileInfo, onupdate : (data : Metadata, fileInfo: FileInfo, wasCached: boolean) => any }[] = [];
     private static working : number = 0;
     private static workingAllowed : number = 4;
+    public static onQueueFinished: () => any;
 
     public static getInfo(filename : string) : FileInfo
     {
@@ -50,54 +51,76 @@ export class FileCache
         return this.getInfo(filename).fid;
     }
 
-    public static getMetadata(fileInfo: FileInfo, onupdate : (data : Metadata, fileInfo: FileInfo) => any, force: boolean = false) : void
+    public static getMetadata(fileInfo: FileInfo, onupdate : (data : Metadata, fileInfo: FileInfo, wasCached: boolean) => any, force: boolean = false) : void
     {
         let cached = this.metadata.get(fileInfo.fid);
 
-        if (cached && !force)
+        // return cached copy if we have one //
+        if (cached && !force && !cached.isPlaceholder)
         {
-            onupdate(cached, fileInfo);
+            onupdate(cached, fileInfo, true);
             return;
         }
 
+        // create default entry so there's something to show while we're loading it //
+        if (!this.metadata.get(fileInfo.fid))
+        {
+            this.metadata.set(fileInfo.fid, DefaultMetadata(path.basename(fileInfo.filename)));
+        }
+
+        // if working set is full, push info onto waiting queue //
         if (this.working === this.workingAllowed)
         {
             this.queue.push({ fileInfo, onupdate });
             return;
         }
 
+        // we're working on this one, increase size of working set //
         this.working++;
 
+        // function be called when we finish loading metadata for an item //
         let ret = () =>
         {
-            onupdate(this.metadata.get(fileInfo.fid) as Metadata, fileInfo);
+            // call callback //
+            onupdate(this.metadata.get(fileInfo.fid) as Metadata, fileInfo, false);
+
+            // see if there's anything waiting //
             this.working--;
             if (this.queue.length > 0)
             {
+                // work on next item //
                 let item = this.queue.shift();
                 if (item !== undefined)
                 {
-                    setTimeout(this.getMetadata.bind(this, item.fileInfo, item.onupdate), 1);
+                    // settimeout to avoid recursive stack overflow for large lists //
+                    setTimeout(this.getMetadata.bind(this, item.fileInfo, item.onupdate, true), 1);
                 }
             }
             else
             {
+                // we're done, let's write to cache file //
                 this.writeCache();
+                if (this.onQueueFinished)
+                {
+                    this.onQueueFinished();
+                }
                 console.log("done loading...?");
             }
         };
 
+        // function to handle the fetched metadata //
         let updateMetadata = (metadata : mm.IAudioMetadata, callback? : () => any) =>
         {
-            if (!this.metadata.get(fileInfo.fid))
+            // default should have been created if no cached at beginning of function //
+            /*if (!this.metadata.get(fileInfo.fid))
             {
                 //console.log("creating metadata entry for " + filename);
                 this.metadata.set(fileInfo.fid, DefaultMetadata());
-            }
+            }*/
             
             let md = this.metadata.get(fileInfo.fid) as Metadata;
 
-            ////console.log(metadata);
+            // console.log(metadata);
 
             if (metadata.common.title) md.title = metadata.common.title;
             if (metadata.common.artist) md.artist = metadata.common.artist;
@@ -105,6 +128,7 @@ export class FileCache
             if (metadata.common.album) md.album = metadata.common.album;
             if (metadata.format.duration) md.length = metadata.format.duration;
             md.modified = Number(fileInfo.stats.mtimeMs);
+            md.isPlaceholder = false;
 
             if (metadata.common.picture && metadata.common.picture[0])
             {

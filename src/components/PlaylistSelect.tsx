@@ -6,14 +6,14 @@ interface Props
 {
     playlistDatas: PlaylistData[];
     onSelect: (data: PlaylistData) => any;
-    onContextMenu: (data: PlaylistData) => any;
+    onContextMenu: (data: PlaylistData, x: number, y: number) => any;
 }
 
 interface State
 {
 }
 
-export default class PlaylistSelect extends React.Component<Props, State>
+export default class PlaylistSelect extends React.PureComponent<Props, State>
 {
     constructor(props: Props)
     {
@@ -29,9 +29,9 @@ export default class PlaylistSelect extends React.Component<Props, State>
         this.props.onSelect(data);
     }
 
-    handleContextMenu(data: PlaylistData): void
+    handleContextMenu(data: PlaylistData, e: React.MouseEvent): void
     {
-        this.props.onContextMenu(data);
+        this.props.onContextMenu(data, e.clientX, e.clientY);
     }
 
     render()
@@ -43,7 +43,7 @@ export default class PlaylistSelect extends React.Component<Props, State>
                     className="item"
                     key={data.name}
                     onDoubleClick={this.handleClick.bind(this, data)}
-                    onContextMenu={this.handleContextMenu.bind(this, data)}
+                    onContextMenu={(e) => this.handleContextMenu(data, e)}
                 >
                     {data.name}
                 </div>

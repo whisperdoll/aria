@@ -19,13 +19,10 @@ export default class Filter
         };
     }
 
-    private static matchesFilter(filter: string, metadata: Metadata | undefined): boolean
+    public static matchesFilter(filter: string, metadata: Metadata | undefined): boolean
     {
         if (!metadata) return false;
-        if (!filter)
-        {
-            return true;
-        }
+        if (!filter) return true;
 
         if (filter.length > 1 && filter[0] === '(' && filter[filter.length - 1] === ')')
         {

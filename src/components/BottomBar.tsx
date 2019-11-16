@@ -3,6 +3,7 @@ import "./BottomBar.scss";
 import WaveBar from "./WaveBar"
 import { FileInfo } from '../utils/cache';
 import { Metadata } from '../utils/datatypes';
+import { secsToMinSecs } from '../utils/utils';
 
 interface Props
 {
@@ -14,6 +15,11 @@ interface Props
     onPlaybackStart: () => any;
     onPlaybackFinish: () => any;
     metadata: Metadata;
+    onTimeChange: (currentSeconds: number, durationSeconds: number) => any;
+    currentSeconds: number;
+    durationSeconds: number;
+    shuffled: boolean;
+    onShuffleToggle: (shuffled: boolean) => any;
 }
 
 interface State
@@ -21,14 +27,24 @@ interface State
     volume: number;
 }
 
-export default class BottomBar extends React.Component<Props, State>
+export default class BottomBar extends React.PureComponent<Props, State>
 {
+    private waveBar: React.RefObject<WaveBar>;
+
     constructor(props: Props)
     {
         super(props);
         this.state = {
             volume: 1
         };
+
+        this.waveBar = React.createRef();
+
+        this.handleNext = this.handleNext.bind(this);
+        this.handlePlayPause = this.handlePlayPause.bind(this);
+        this.handlePrevious = this.handlePrevious.bind(this);
+        this.handleShuffleToggle = this.handleShuffleToggle.bind(this);
+        this.handleVolumeChange = this.handleVolumeChange.bind(this);
     }
 
     handlePrevious(): void
@@ -54,6 +70,17 @@ export default class BottomBar extends React.Component<Props, State>
         });
     }
 
+    handleShuffleToggle(): void
+    {
+        this.props.onShuffleToggle(!this.props.shuffled);
+    }
+
+    public restartSong(): void
+    {
+        if (!this.waveBar.current) return;
+        this.waveBar.current.restartSong();
+    }
+
     render()
     {
         let playPause = this.props.playing ? "pause" : "play";
@@ -65,17 +92,17 @@ export default class BottomBar extends React.Component<Props, State>
                     <button
                         className="svgButton"
                         id="previous"
-                        onClick={this.handlePrevious.bind(this)}
+                        onClick={this.handlePrevious}
                     />
                     <button
                         className={"svgButton " + playPause}
                         id="playPause"
-                        onClick={this.handlePlayPause.bind(this)}
+                        onClick={this.handlePlayPause}
                     />
                     <button
                         className="svgButton"
                         id="next"
-                        onClick={this.handleNext.bind(this)}
+                        onClick={this.handleNext}
                     />
                 </div>
                 <div id="miscControls">
@@ -86,12 +113,18 @@ export default class BottomBar extends React.Component<Props, State>
                         max="1"
                         step="0.01"
                         value={this.state.volume}
-                        onChange={this.handleVolumeChange.bind(this)}
+                        onChange={this.handleVolumeChange}
                     />
                     <button
-                        className="svgButton"
+                        className={"svgButton" + (this.props.shuffled ? " active" : "")}
                         id="shuffle"
+                        onClick={this.handleShuffleToggle}
                     />
+                </div>
+                <div id="songLength">
+                    {secsToMinSecs(this.props.currentSeconds) +
+                    " / " + 
+                    secsToMinSecs(this.props.durationSeconds)}
                 </div>
                 <WaveBar
                     currentItem={this.props.currentItem}
@@ -99,6 +132,8 @@ export default class BottomBar extends React.Component<Props, State>
                     onPlaybackStart={this.props.onPlaybackStart}
                     onPlaybackFinish={this.props.onPlaybackFinish}
                     playing={this.props.playing}
+                    onTimeChange={this.props.onTimeChange}
+                    ref={this.waveBar}
                 />
             </div>
         );

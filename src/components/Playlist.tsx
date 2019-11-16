@@ -3,6 +3,7 @@ import PlaylistItem from './PlaylistItem';
 import "./Playlist.scss";
 import { FileInfo } from '../utils/cache';
 import { Metadata, DefaultMetadata } from '../utils/datatypes';
+import * as path from "path";
 
 interface Props
 {
@@ -19,7 +20,7 @@ interface State
 
 }
 
-export default class Playlist extends React.Component<Props, State>
+export default class Playlist extends React.PureComponent<Props, State>
 {
     constructor(props: Props)
     {
@@ -38,6 +39,7 @@ export default class Playlist extends React.Component<Props, State>
 
     render()
     {
+        console.log("playlist render");
         let i = 0;
         let list = this.props.fileInfos.map((fileInfo) =>
         {
@@ -50,7 +52,7 @@ export default class Playlist extends React.Component<Props, State>
                     onDoubleClick={this.handleDoubleClick.bind(this)}
                     selected={this.props.selection.has(fileInfo)}
                     playing={this.props.currentItem === fileInfo}
-                    metadata={this.props.metadata.get(fileInfo.fid) || (DefaultMetadata())}
+                    metadata={this.props.metadata.get(fileInfo.fid) || (DefaultMetadata(path.basename(fileInfo.filename)))}
                 />
             );
         });

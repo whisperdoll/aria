@@ -15,7 +15,8 @@ function createWindow() {
     webPreferences:
     {
       nodeIntegration: true,
-      webSecurity: false
+      webSecurity: false,
+      nodeIntegrationInWorker: true
     }
   });
   mainWindow.loadURL(isDev ? 'http://localhost:3000' : `file://${path.join(__dirname, '../build/index.html')}`);

@@ -11,7 +11,7 @@ interface State
 {
 }
 
-export default class Dialog extends React.Component<Props, State>
+export default class Dialog extends React.PureComponent<Props, State>
 {
     constructor(props: Props)
     {
