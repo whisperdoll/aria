@@ -15,6 +15,7 @@ import ContextMenuItem from './components/ContextMenuItem';
 import FilterBox from './components/FilterBox';
 import Filter, { FilterInfo } from './components/Filter';
 import PlaylistItem from './components/PlaylistItem';
+import StatusBar from './components/StatusBar';
 
 interface Props
 {
@@ -643,6 +644,10 @@ export default class App extends React.PureComponent<Props, State>
                     shuffled={this.state.shuffled}
                     onShuffleToggle={this.handleShuffleToggle}
                     ref={this.bottomBar}
+                />
+
+                <StatusBar
+                    selection={this.state.selection}
                 />
 
                 <PlaylistDialog

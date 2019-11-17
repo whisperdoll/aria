@@ -26,6 +26,9 @@ export default class PlaylistItem extends React.PureComponent<Props, State>
         super(props);
         this.state = {
         };
+
+        this.handleClick = this.handleClick.bind(this);
+        this.handleDoubleClick = this.handleDoubleClick.bind(this);
     }
     
     componentDidMount()
@@ -64,9 +67,9 @@ export default class PlaylistItem extends React.PureComponent<Props, State>
         return (
             <div
                 className={className}
-                onClick={this.handleClick.bind(this)}
-                onContextMenu={this.handleClick.bind(this)}
-                onDoubleClick={this.handleDoubleClick.bind(this)}
+                onClick={this.handleClick}
+                onContextMenu={this.handleClick}
+                onDoubleClick={this.handleDoubleClick}
             >
                 <img
                     className="thumbnail"

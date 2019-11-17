@@ -25,6 +25,9 @@ export default class Playlist extends React.PureComponent<Props, State>
     constructor(props: Props)
     {
         super(props);
+
+        this.handleClick = this.handleClick.bind(this);
+        this.handleDoubleClick = this.handleDoubleClick.bind(this);
     }
 
     handleClick(itemInfo: FileInfo, e: React.MouseEvent)
@@ -39,7 +42,6 @@ export default class Playlist extends React.PureComponent<Props, State>
 
     render()
     {
-        console.log("playlist render");
         let i = 0;
         let list = this.props.fileInfos.map((fileInfo) =>
         {
@@ -48,14 +50,15 @@ export default class Playlist extends React.PureComponent<Props, State>
                     index={i++}
                     key={fileInfo.fid}
                     fileInfo={fileInfo}
-                    onClick={this.handleClick.bind(this)}
-                    onDoubleClick={this.handleDoubleClick.bind(this)}
+                    onClick={this.handleClick}
+                    onDoubleClick={this.handleDoubleClick}
                     selected={this.props.selection.has(fileInfo)}
                     playing={this.props.currentItem === fileInfo}
                     metadata={this.props.metadata.get(fileInfo.fid) || (DefaultMetadata(path.basename(fileInfo.filename)))}
                 />
             );
         });
+        
 
         return <div className="playlist">{list}</div>;
     }

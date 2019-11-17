@@ -66,6 +66,20 @@
     height: $bottomPanelHeight;
 }
 
+#statusBar
+{
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: $statusBarHeight;
+    line-height: $statusBarHeight;
+    background-color: #222;
+    box-sizing: border-box;
+    color: #ccc;
+    padding: 0 8px;
+}
+
 #background
 {
     z-index: -1000;
