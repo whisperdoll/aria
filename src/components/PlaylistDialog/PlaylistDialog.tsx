@@ -21,6 +21,8 @@ interface State
 
 export default class PlaylistDialog extends React.Component<Props, State>
 {
+    private lastOperatingIndex: number = -1;
+
     constructor(props: Props)
     {
         super(props);
@@ -32,16 +34,14 @@ export default class PlaylistDialog extends React.Component<Props, State>
 
     componentDidMount()
     {
-        this.updateStateFromProps(this.props);
+        this.componentDidUpdate(this.props);
     }
 
-    UNSAFE_componentWillReceiveProps(props: Props)
+    componentDidUpdate(props: Props)
     {
-        this.updateStateFromProps(props);
-    }
+        if (props.operatingIndex === this.lastOperatingIndex) return;
+        this.lastOperatingIndex = props.operatingIndex;
 
-    updateStateFromProps(props: Props)
-    {
         if (props.operatingIndex >= 0)
         {
             let operatingData = this.props.playlistDatas[this.props.operatingIndex];

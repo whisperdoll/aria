@@ -26,6 +26,12 @@ export class FileCache
     private static workingAllowed : number = 4;
     public static onQueueFinished: () => any;
 
+    public static rename(fileInfo: FileInfo, newFileName: string): void
+    {
+        fs.renameSync(fileInfo.filename, newFileName);
+        fileInfo.filename = newFileName;
+    }
+
     public static getInfo(filename : string) : FileInfo
     {
         let cached = this.filenameStats.get(filename);

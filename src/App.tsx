@@ -14,11 +14,19 @@ import ContextMenu from './components/ContextMenu';
 import ContextMenuItem from './components/ContextMenuItem';
 import FilterBox from './components/FilterBox';
 import Filter, { FilterInfo } from './components/Filter';
-import PlaylistItem from './components/PlaylistItem';
 import StatusBar from './components/StatusBar';
+import RenameDialog from './components/RenameDialog';
 
 interface Props
 {
+}
+
+interface ContextMenuInfo
+{
+    showing: boolean;
+    x: number;
+    y: number;
+    context: any;
 }
 
 interface State
@@ -35,15 +43,10 @@ interface State
     metadata: Map<string, Metadata>;
     shuffled: boolean;
     showingDialogs: {
-        playlist: boolean
+        [key: string]: boolean
     };
     contextMenus: {
-        [key: string]: {
-            showing: boolean,
-            x: number,
-            y: number,
-            context: any
-        }
+        [key: string]: ContextMenuInfo
     };
 }
 
@@ -56,6 +59,7 @@ export default class App extends React.PureComponent<Props, State>
     private contextData: PlaylistData | null = null;
     private bottomBar: React.RefObject<BottomBar>;
     private playOrder: number[] = []; // array of indeces
+    private parentPathHavers: Set<FileInfo> = new Set();
 
     constructor(props: Props)
     {
@@ -82,10 +86,17 @@ export default class App extends React.PureComponent<Props, State>
             metadata: new Map(FileCache.loadMetadata()),
             shuffled: false,
             showingDialogs: {
-                playlist: false
+                playlist: false,
+                rename: false
             },
             contextMenus: {
                 playlist: {
+                    showing: false,
+                    x: 0,
+                    y: 0,
+                    context: null
+                },
+                itemSelection: {
                     showing: false,
                     x: 0,
                     y: 0,
@@ -115,8 +126,10 @@ export default class App extends React.PureComponent<Props, State>
         this.handlePlaylistContextMenu = this.handlePlaylistContextMenu.bind(this);
         this.handlePlaylistSelect = this.handlePlaylistSelect.bind(this);
         this.handlePrevious = this.handlePrevious.bind(this);
-        this.handleTimeChange = this.handleTimeChange.bind(this);
+        this.handleRenameDialogHide = this.handleRenameDialogHide.bind(this);
+        this.handleRenameRequest = this.handleRenameRequest.bind(this);
         this.handleShuffleToggle = this.handleShuffleToggle.bind(this);
+        this.handleTimeChange = this.handleTimeChange.bind(this);
     }
 
     private processAppCommand(e : any, command : string) : void
@@ -131,6 +144,7 @@ export default class App extends React.PureComponent<Props, State>
 
     loadPlaylist(playlistData: PlaylistData): void
     {
+        console.log("loading " + playlistData.name);
         const filenameAllowed = (f: string): boolean =>
         {
             return AllowedExtensions.some(e => endsWith(f, "." + e));
@@ -139,6 +153,7 @@ export default class App extends React.PureComponent<Props, State>
         FileCache.clearMetadataQueue();
         this.playlistData = playlistData;
         this.allFileInfos = [];
+        this.parentPathHavers.clear();
 
         playlistData.paths.forEach((pathInfo) =>
         {
@@ -152,9 +167,11 @@ export default class App extends React.PureComponent<Props, State>
                         if (Filter.matchesFilter(playlistData.filter, metadata))
                         {
                             this.allFileInfos.push(info);
-                            this.setState({
-                                ...this.state,
-                                metadata: new Map(FileCache.metadata)
+                            this.setState((state) => {
+                                return {
+                                    ...state,
+                                    metadata: new Map(FileCache.metadata)
+                                };
                             });
                             this.filterAndSortAll();
                         }
@@ -176,19 +193,26 @@ export default class App extends React.PureComponent<Props, State>
                         counter++;
                         if (counter === infos.length)
                         {
-                            this.setState({
-                                ...this.state,
-                                metadata: new Map(FileCache.metadata)
+                            this.setState((state) => {
+                                return {
+                                    ...state,
+                                    metadata: new Map(FileCache.metadata)
+                                };
                             });
 
                             let goodInfos = this.filterAndSort(infos, pathInfo.sort || "", { appliedPart: pathInfo.filter || "", previewPart: "" }).itemList;
                             this.allFileInfos.push(...goodInfos);
+                            goodInfos.forEach(i => this.parentPathHavers.add(i));
                             this.filterAndSortAll();
                         }
                     });
                 });
             }
         });
+
+        (window as any).p = this.playlistData;
+        (window as any).s = this.allFileInfos;
+        (window as any).m = FileCache.metadata;
     }
 
     private filterAndSort(array: FileInfo[], sort: string, filter: FilterInfo): { itemList: FileInfo[], visibleList: FileInfo[] }
@@ -214,10 +238,12 @@ export default class App extends React.PureComponent<Props, State>
 
         let filteredLists = this.filterAndSort(this.allFileInfos, this.playlistData.sort, this.state.filter);
 
-        this.setState({
-            ...this.state,
-            itemList: filteredLists.itemList,
-            visibleList: filteredLists.visibleList
+        this.setState((state) => {
+            return {
+                ...state,
+                itemList: filteredLists.itemList,
+                visibleList: filteredLists.visibleList
+            };
         });
     }
     
@@ -274,12 +300,25 @@ export default class App extends React.PureComponent<Props, State>
     {
         document.addEventListener("click", () =>
         {
-            let contextMenus = this.state.contextMenus;
+            let contextMenus: { [key: string]: ContextMenuInfo } = {};
             // 400-3334
-            for (let key in contextMenus)
+            for (let key in this.state.contextMenus)
             {
-
+                contextMenus[key] = {
+                    showing: false,
+                    x: 0,
+                    y: 0,
+                    context: null
+                };
             }
+
+            this.setState((state) =>
+            {
+                return {
+                    ...state,
+                    contextMenus
+                };
+            });
         });
 
         let playlistPath = "D:\\Electron\\music\\myplaylists\\";
@@ -289,15 +328,19 @@ export default class App extends React.PureComponent<Props, State>
             return JSON.parse(fs.readFileSync(path.join(playlistPath, f), "utf8")) as PlaylistData;
         }).sort((a, b) => a.created - b.created);
         
-        this.setState({
-            ...this.state,
-            playlistDatas
+        this.setState((state) => {
+            return {
+                ...state,
+                playlistDatas
+            };
         });
     }
 
     handleItemClick(itemInfo: FileInfo, e: React.MouseEvent)
     {
         let s = new Set(this.state.selection);
+        let x = e.clientX;
+        let y = e.clientY;
 
         if (e.button === 0)
         {
@@ -388,21 +431,40 @@ export default class App extends React.PureComponent<Props, State>
                 s.add(itemInfo);
             }
 
-            // TODO: context menu
+            this.setState((state) =>
+            {
+                return {
+                    ...state,
+                    contextMenus: {
+                        ...state.contextMenus,
+                        itemSelection: {
+                            showing: true,
+                            x: x,
+                            y: y,
+                            context: null
+                        }
+                    }
+                };
+            });
         }
 
-        this.setState({
-            ...this.state,
-            selection: s
+        this.setState((state) =>
+        {
+            return {
+                ...state,
+                selection: s
+            };
         });
     }
 
     handleItemDoubleClick(itemInfo: FileInfo, e: React.MouseEvent)
     {
-        this.setState({
-            ...this.state,
-            currentItem: itemInfo,
-            playing: true
+        this.setState((state) => {
+            return {
+                ...state,
+                currentItem: itemInfo,
+                playing: true
+            };
         });
     }
 
@@ -413,9 +475,11 @@ export default class App extends React.PureComponent<Props, State>
 
     handleNext()
     {
-        this.setState({
-            ...this.state,
-            currentItem: this.nextItem
+        this.setState((state) => {
+            return {
+                ...state,
+                currentItem: this.nextItem
+            };
         });
     }
 
@@ -430,9 +494,11 @@ export default class App extends React.PureComponent<Props, State>
         }
         else
         {
-            this.setState({
-                ...this.state,
-                currentItem: this.previousItem
+            this.setState((state) => {
+                return {
+                    ...state,
+                    currentItem: this.previousItem
+                };
             });
         }
     }
@@ -443,9 +509,11 @@ export default class App extends React.PureComponent<Props, State>
         {
             if (this.state.currentItem)
             {
-                this.setState({
-                    ...this.state,
-                    playing: true
+                this.setState((state) => {
+                    return {
+                        ...state,
+                        playing: true
+                    };
                 });
             }
             else
@@ -454,19 +522,23 @@ export default class App extends React.PureComponent<Props, State>
                 {
                     let items: FileInfo[] = [];
                     this.state.selection.forEach(s => items.push(s));
-                    this.setState({
-                        ...this.state,
-                        currentItem: items[0],
-                        playing: true
+                    this.setState((state) => {
+                        return {
+                            ...state,
+                            currentItem: items[0],
+                            playing: true
+                        };
                     });
                 }
             }
         }
         else
         {
-            this.setState({
-                ...this.state,
-                playing: false
+            this.setState((state) => {
+                return {
+                    ...state,
+                    playing: false
+                };
             });
         }
     }
@@ -479,20 +551,27 @@ export default class App extends React.PureComponent<Props, State>
             this.state.currentItem,
             (metadata, fid) =>
             {
-                this.setState({
-                    ...this.state,
-                    metadata: FileCache.metadata
+                this.setState((state) => {
+                    return {
+                        ...state,
+                        metadata: FileCache.metadata
+                    };
                 });
-            }
+
+                FileCache.writeCache();
+            },
+            true
         );
     }
 
     handleTimeChange(currentSeconds: number, durationSeconds: number): void
     {
-        this.setState({
-            ...this.state,
-            currentSeconds,
-            durationSeconds
+        this.setState((state) => {
+            return {
+                ...state,
+                currentSeconds,
+                durationSeconds
+            };
         });
     }
 
@@ -520,9 +599,11 @@ export default class App extends React.PureComponent<Props, State>
 
     handlePlaybackFinish()
     {
-        this.setState({
-            ...this.state,
-            currentItem: this.nextItem
+        this.setState((state) => {
+            return {
+                ...state,
+                currentItem: this.nextItem
+            };
         });
     }
 
@@ -533,12 +614,27 @@ export default class App extends React.PureComponent<Props, State>
 
     handleDialogCancel()
     {
-        this.setState({
-            ...this.state,
-            showingDialogs: {
-                ...this.state.showingDialogs,
-                playlist: false
-            }
+        this.setState((state) => {
+            return {
+                ...state,
+                showingDialogs: {
+                    ...state.showingDialogs,
+                    playlist: false
+                }
+            };
+        });
+    }
+
+    handleRenameDialogHide()
+    {
+        this.setState((state) => {
+            return {
+                ...state,
+                showingDialogs: {
+                    ...state.showingDialogs,
+                    rename: false
+                }
+            };
         });
     }
 
@@ -552,17 +648,19 @@ export default class App extends React.PureComponent<Props, State>
     handlePlaylistContextMenu(data: PlaylistData, x: number, y: number): void
     {
         this.contextData = data;
-        this.setState({
-            ...this.state,
-            contextMenus: {
-                ...this.state.contextMenus,
-                playlist: {
-                    showing: true,
-                    x,
-                    y,
-                    context: data
+        this.setState((state) => {
+            return {
+                ...state,
+                contextMenus: {
+                    ...state.contextMenus,
+                    playlist: {
+                        showing: true,
+                        x,
+                        y,
+                        context: data
+                    }
                 }
-            }
+            };
         });
     }
 
@@ -570,20 +668,74 @@ export default class App extends React.PureComponent<Props, State>
     {
         let x = Filter.apply(filter, this.allFileInfos, this.state.metadata);
 
-        this.setState({
-            ...this.state,
-            filter,
-            visibleList: x.visibleList,
-            itemList: x.itemList
+        this.setState((state) => {
+            return {
+                ...state,
+                filter,
+                visibleList: x.visibleList,
+                itemList: x.itemList
+            };
         });
     }
 
     handleShuffleToggle(shuffle: boolean): void
     {
-        this.setState({
-            ...this.state,
-            shuffled: shuffle
+        this.setState((state) => {
+            return {
+                ...state,
+                shuffled: shuffle
+            };
         });
+    }
+
+    handleRenameRequest(): void
+    {
+        this.setState((state) =>
+        {
+            return {
+                ...state,
+                showingDialogs: {
+                    ...state.showingDialogs,
+                    rename: true
+                }
+            };
+        });
+    }
+
+    handleConsolidateModifiedTimes = () =>
+    {
+        if (!this.playlistData) return;
+        const selection = Array.from(this.state.selection);
+        let newMTime = selection[0].stats.mtime;
+
+        selection.forEach((song) =>
+        {
+            fs.utimesSync(song.filename, song.stats.atime, newMTime);
+
+            FileCache.getMetadata(
+                song,
+                (metadata, fid) =>
+                {
+                    this.setState((state) => {
+                        return {
+                            ...state,
+                            metadata: FileCache.metadata
+                        };
+                    });
+    
+                    FileCache.writeCache();
+                },
+                true
+            );
+        });
+
+        // scrolltop doesnt get reset on reload so commenting this out
+        /*let scrollTop = this.playlistView.container.scrollTop;
+        this.playlistView.once("construct", () =>
+        {
+            this.playlistView.container.scrollTop = scrollTop;
+        });*/
+        this.loadPlaylist(this.playlistData);
     }
 
     render()
@@ -596,6 +748,22 @@ export default class App extends React.PureComponent<Props, State>
         }
 
         let albumSrc = this.state.currentItem ? currentMetadata.picture: "";
+
+        const selectionArray = Array.from(this.state.selection);
+        const playlistLoadedCondition = () => this.playlistData !== null;
+        const songSelectedCondition = () => this.state.selection.size > 0;
+        const songIsPartOfPathCondition = () => selectionArray.every(fileInfo => this.parentPathHavers.has(fileInfo));
+        const songIsAloneCondition = () => selectionArray.every(fileInfo => !this.parentPathHavers.has(fileInfo));
+        const songsAreSameAlbumCondition = () => 
+        {
+            return this.state.selection.size > 0
+                && selectionArray.every((fileInfo) =>
+                {
+                    const md1 = this.state.metadata.get(fileInfo.fid);
+                    const md2 = this.state.metadata.get(selectionArray[0].fid);
+                    return md1 && md2 && md1.album === md2.album;
+                });
+        };
 
         return (
             <div id="container">
@@ -658,6 +826,12 @@ export default class App extends React.PureComponent<Props, State>
                     onCancel={this.handleDialogCancel}
                 />
 
+                <RenameDialog
+                    items={Array.from(this.state.selection)}
+                    onHide={this.handleRenameDialogHide}
+                    showing={this.state.showingDialogs.rename}
+                />
+
                 <ContextMenu
                     showing={this.state.contextMenus.playlist.showing}
                     x={this.state.contextMenus.playlist.x}
@@ -668,6 +842,25 @@ export default class App extends React.PureComponent<Props, State>
                         key="Edit Playlist"
                         onClick={this.handleEditPlaylist}
                         showing={true}
+                    />
+                </ContextMenu>
+
+                <ContextMenu
+                    showing={this.state.contextMenus.itemSelection.showing}
+                    x={this.state.contextMenus.itemSelection.x}
+                    y={this.state.contextMenus.itemSelection.y}
+                >
+                    <ContextMenuItem
+                        text="Rename..."
+                        key="Rename..."
+                        onClick={this.handleRenameRequest}
+                        showing={true}
+                    />
+                    <ContextMenuItem
+                        text="Consolidate Modified Times"
+                        key="Consolidate Modified Times"
+                        onClick={this.handleConsolidateModifiedTimes}
+                        showing={songsAreSameAlbumCondition()}
                     />
                 </ContextMenu>
             </div>
