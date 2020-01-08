@@ -121,37 +121,42 @@ export default class App extends React.PureComponent<Props, State>
     {
         console.log("loading " + playlistData.name);
         this.playlistData = playlistData;
+        this.parentPathHavers.clear();
 
         const filenameAllowed = (f: string): boolean =>
         {
             return AllowedExtensions.some(e => endsWith(f, "." + e));
         };
 
-        const filenames = [];
+        this.allFileInfos = [];
 
         for (const playlistPath of playlistData.paths)
         {
-            if (isFile(playlistPath.path))
+            const fileInfo = FileCache.getInfo(playlistPath.path);
+            
+            if (fileInfo.stats.isFile() && filenameAllowed(playlistPath.path))
             {
-                filenames.push(playlistPath.path);
+                this.allFileInfos.push(fileInfo);
+                FileCache.subscribeToFid(fileInfo.fid, this.handleMetadataUpdate);
+                FileCache.getMetadata(fileInfo);
             }
             else
             {
-                filenames.push(...fs.readdirSync(playlistPath.path));
+                const subFileInfos = fs.readdirSync(playlistPath.path).filter(filenameAllowed).map(filename => path.join(playlistPath.path, filename)).map(FileCache.getInfo);
+                for (const subFileInfo of subFileInfos)
+                {
+                    this.allFileInfos.push(subFileInfo);
+                    this.parentPathHavers.add(subFileInfo);
+                    FileCache.subscribeToFid(fileInfo.fid, this.handleMetadataUpdate);
+                    FileCache.getMetadata(subFileInfo);
+                }
             }
         }
-
-        this.allFileInfos = filenames.filter(filenameAllowed).map(FileCache.getInfo);
 
         this.setState(state => ({
             itemList: array_copy(this.allFileInfos),
             visibleList: array_copy(this.allFileInfos)
         }));
-
-        for (const info of this.allFileInfos)
-        {
-            FileCache.subscribeToFid(info.fid, this.handleMetadataUpdate);
-        }
     }
 
     private handleMetadataUpdate = (fid: string, metadata: Metadata) =>

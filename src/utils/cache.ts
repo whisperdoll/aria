@@ -23,7 +23,7 @@ export class FileCache
     private static lastWrite : number = 0;
     private static writeDelay : number = 10000;
     private static writingPic = new Map<string, boolean>();
-    private static queue : { fileInfo: FileInfo, onupdate : (data : Metadata, fileInfo: FileInfo, wasCached: boolean) => any }[] = [];
+    private static queue : { fileInfo: FileInfo, onupdate? : (data : Metadata, fileInfo: FileInfo, wasCached: boolean) => any }[] = [];
     private static working : number = 0;
     private static workingAllowed : number = 4;
     public static onQueueFinished: () => any;
@@ -99,14 +99,14 @@ export class FileCache
         }
     }
 
-    public static getMetadata(fileInfo: FileInfo, onupdate : (data : Metadata, fileInfo: FileInfo, wasCached: boolean) => any, force: boolean = false) : void
+    public static getMetadata(fileInfo: FileInfo, onupdate? : (data : Metadata, fileInfo: FileInfo, wasCached: boolean) => any, force: boolean = false) : void
     {
         let cached = this.metadata.get(fileInfo.fid);
 
         // return cached copy if we have one //
         if (cached && !force && !cached.isPlaceholder)
         {
-            onupdate(cached, fileInfo, true);
+            onupdate && onupdate(cached, fileInfo, true);
             return;
         }
 
@@ -130,7 +130,7 @@ export class FileCache
         let ret = () =>
         {
             // call callback //
-            onupdate(this.metadata.get(fileInfo.fid) as Metadata, fileInfo, false);
+            onupdate && onupdate(this.metadata.get(fileInfo.fid) as Metadata, fileInfo, false);
 
             // see if there's anything waiting //
             this.working--;
