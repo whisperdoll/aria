@@ -1,6 +1,6 @@
 import * as path from "path";
 import * as fs from "fs";
-import { getUserDataPath, bigintStatSync, jsonToMap, mapToJson } from "./utils";
+import { getUserDataPath, bigintStatSync, jsonToMap, mapToJson, array_remove } from "./utils";
 import { Metadata, DefaultMetadata } from "./datatypes"
 import { SafeWriter } from "./safewriter";
 import * as mm from "music-metadata";
@@ -25,6 +25,31 @@ export class FileCache
     private static working : number = 0;
     private static workingAllowed : number = 4;
     public static onQueueFinished: () => any;
+    private static subscriptions = new Map<string, ((metadata: Metadata) => any)[]>();
+
+    public static subscribeToFid(fid: string, handler: (metadata: Metadata) => any)
+    {
+        let arr = this.subscriptions.get(fid);
+        if (!arr)
+        {
+            arr = [];
+            this.subscriptions.set(fid, arr);
+        }
+
+        arr.push(handler);
+    }
+
+    public static unsubscribeFromFid(fid: string, handler: (metadata: Metadata) => any)
+    {
+        let arr = this.subscriptions.get(fid);
+
+        if (!arr)
+        {
+            throw new Error("not even subscribed to that");
+        }
+        
+        array_remove(arr, handler);
+    }
 
     public static rename(fileInfo: FileInfo, newFileName: string): void
     {
@@ -57,6 +82,21 @@ export class FileCache
         return this.getInfo(filename).fid;
     }
 
+    private static updateAndBroadcast(fid: string, metadata: Metadata)
+    {
+        this.metadata.set(fid, metadata);
+
+        const arr = this.subscriptions.get(fid);
+
+        if (arr)
+        {
+            for (const handler of arr)
+            {
+                handler(metadata);
+            }
+        }
+    }
+
     public static getMetadata(fileInfo: FileInfo, onupdate : (data : Metadata, fileInfo: FileInfo, wasCached: boolean) => any, force: boolean = false) : void
     {
         let cached = this.metadata.get(fileInfo.fid);
@@ -71,7 +111,7 @@ export class FileCache
         // create default entry so there's something to show while we're loading it //
         if (!this.metadata.get(fileInfo.fid))
         {
-            this.metadata.set(fileInfo.fid, DefaultMetadata(path.basename(fileInfo.filename)));
+            this.updateAndBroadcast(fileInfo.fid, DefaultMetadata(path.basename(fileInfo.filename)))
         }
 
         // if working set is full, push info onto waiting queue //
@@ -100,6 +140,10 @@ export class FileCache
                 {
                     // settimeout to avoid recursive stack overflow for large lists //
                     setTimeout(this.getMetadata.bind(this, item.fileInfo, item.onupdate, true), 1);
+                }
+                else
+                {
+                    throw new Error("something bad happen");
                 }
             }
             else
@@ -161,6 +205,7 @@ export class FileCache
                             md.picture = src;
                             //console.log("wrote pic for: " + filename, this.metadata[fid].picture);
                             this.writingPic.set(fileInfo.fid, false);
+                            this.updateAndBroadcast(fileInfo.fid, md);
                             callback && callback();
                         });
                     }
@@ -168,6 +213,7 @@ export class FileCache
             }
             else
             {
+                this.updateAndBroadcast(fileInfo.fid, md);
                 callback && callback();
             }
         };

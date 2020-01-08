@@ -34,20 +34,15 @@ interface State
     filter: FilterInfo;
     itemList: FileInfo[];
     visibleList: FileInfo[];
-    selection: Set<FileInfo>;
+    selection: FileInfo[];
     playlistDatas: PlaylistData[];
     playing: boolean;
     currentItem: FileInfo | null;
     currentSeconds: number;
     durationSeconds: number;
-    metadata: Map<string, Metadata>;
     shuffled: boolean;
-    showingDialogs: {
-        [key: string]: boolean
-    };
-    contextMenus: {
-        [key: string]: ContextMenuInfo
-    };
+    showingDialogs: Record<string, boolean>;
+    contextMenus: Record<string, ContextMenuInfo>;
 }
 
 export const AllowedExtensions = [ "mp3", "m4a" ];
@@ -77,13 +72,12 @@ export default class App extends React.PureComponent<Props, State>
             },
             itemList: [],
             visibleList: [],
-            selection: new Set(),
+            selection: [],
             playlistDatas: [],
             playing: false,
             currentItem: null,
             currentSeconds: 0,
             durationSeconds: 0,
-            metadata: new Map(FileCache.loadMetadata()),
             shuffled: false,
             showingDialogs: {
                 playlist: false,
@@ -111,28 +105,9 @@ export default class App extends React.PureComponent<Props, State>
 
         let ipcRenderer = Electron.ipcRenderer;
         ipcRenderer.on("app-command", this.processAppCommand.bind(this));
-
-        this.handleCacheQueueFinished = this.handleCacheQueueFinished.bind(this);
-        this.handleDialogCancel = this.handleDialogCancel.bind(this);
-        this.handleEditPlaylist = this.handleEditPlaylist.bind(this);
-        this.handleFilter = this.handleFilter.bind(this);
-        this.handleItemClick = this.handleItemClick.bind(this);
-        this.handleItemDoubleClick = this.handleItemDoubleClick.bind(this);
-        this.handleNext = this.handleNext.bind(this);
-        this.handlePlayPause = this.handlePlayPause.bind(this);
-        this.handlePlaybackFinish = this.handlePlaybackFinish.bind(this);
-        this.handlePlaybackStart = this.handlePlaybackStart.bind(this);
-        this.handlePlaylistAccept = this.handlePlaylistAccept.bind(this);
-        this.handlePlaylistContextMenu = this.handlePlaylistContextMenu.bind(this);
-        this.handlePlaylistSelect = this.handlePlaylistSelect.bind(this);
-        this.handlePrevious = this.handlePrevious.bind(this);
-        this.handleRenameDialogHide = this.handleRenameDialogHide.bind(this);
-        this.handleRenameRequest = this.handleRenameRequest.bind(this);
-        this.handleShuffleToggle = this.handleShuffleToggle.bind(this);
-        this.handleTimeChange = this.handleTimeChange.bind(this);
     }
 
-    private processAppCommand(e : any, command : string) : void
+    private processAppCommand = (e : any, command : string) =>
     {
         switch (command)
         {
@@ -142,7 +117,7 @@ export default class App extends React.PureComponent<Props, State>
         }
     }
 
-    loadPlaylist(playlistData: PlaylistData): void
+    loadPlaylist = (playlistData: PlaylistData) =>
     {
         console.log("loading " + playlistData.name);
         const filenameAllowed = (f: string): boolean =>
