@@ -1,7 +1,7 @@
 import React from 'react';
 import './App.scss';
 import Playlist from './components/Playlist';
-import { getUserDataPath, endsWith, array_copy, mod, mergeSorted, SortFunction, array_shuffle } from './utils/utils';
+import { getUserDataPath, endsWith, array_copy, mod, mergeSorted, SortFunction, array_shuffle, array_contains, array_remove, array_ensureOne, array_remove_all, isFile } from './utils/utils';
 import { FileCache, FileInfo } from "./utils/cache";
 import * as fs from "fs";
 import * as path from "path";
@@ -117,80 +117,49 @@ export default class App extends React.PureComponent<Props, State>
         }
     }
 
-    loadPlaylist = (playlistData: PlaylistData) =>
+    private loadPlaylist = (playlistData: PlaylistData) =>
     {
         console.log("loading " + playlistData.name);
+        this.playlistData = playlistData;
+
         const filenameAllowed = (f: string): boolean =>
         {
             return AllowedExtensions.some(e => endsWith(f, "." + e));
         };
 
-        FileCache.clearMetadataQueue();
-        this.playlistData = playlistData;
-        this.allFileInfos = [];
-        this.parentPathHavers.clear();
+        const filenames = [];
 
-        playlistData.paths.forEach((pathInfo) =>
+        for (const playlistPath of playlistData.paths)
         {
-            let info = FileCache.getInfo(pathInfo.path);
-            if (info.stats.isFile())
+            if (isFile(playlistPath.path))
             {
-                if (filenameAllowed(pathInfo.path))
-                {
-                    FileCache.getMetadata(info, (metadata) =>
-                    {
-                        if (Filter.matchesFilter(playlistData.filter, metadata))
-                        {
-                            this.allFileInfos.push(info);
-                            this.setState((state) => {
-                                return {
-                                    ...state,
-                                    metadata: new Map(FileCache.metadata)
-                                };
-                            });
-                            this.filterAndSortAll();
-                        }
-                    });
-                }
+                filenames.push(playlistPath.path);
             }
             else
             {
-                let infos = fs.readdirSync(pathInfo.path)
-                    .filter(f => filenameAllowed(f))
-                    .map(f => FileCache.getInfo(path.join(pathInfo.path, f)));
-
-                let counter = 0;
-
-                infos.forEach((info) =>
-                {
-                    FileCache.getMetadata(info, (metadata) =>
-                    {
-                        counter++;
-                        if (counter === infos.length)
-                        {
-                            this.setState((state) => {
-                                return {
-                                    ...state,
-                                    metadata: new Map(FileCache.metadata)
-                                };
-                            });
-
-                            let goodInfos = this.filterAndSort(infos, pathInfo.sort || "", { appliedPart: pathInfo.filter || "", previewPart: "" }).itemList;
-                            this.allFileInfos.push(...goodInfos);
-                            goodInfos.forEach(i => this.parentPathHavers.add(i));
-                            this.filterAndSortAll();
-                        }
-                    });
-                });
+                filenames.push(...fs.readdirSync(playlistPath.path));
             }
-        });
+        }
 
-        (window as any).p = this.playlistData;
-        (window as any).s = this.allFileInfos;
-        (window as any).m = FileCache.metadata;
+        this.allFileInfos = filenames.filter(filenameAllowed).map(FileCache.getInfo);
+
+        this.setState(state => ({
+            itemList: array_copy(this.allFileInfos),
+            visibleList: array_copy(this.allFileInfos)
+        }));
+
+        for (const info of this.allFileInfos)
+        {
+            FileCache.subscribeToFid(info.fid, this.handleMetadataUpdate);
+        }
     }
 
-    private filterAndSort(array: FileInfo[], sort: string, filter: FilterInfo): { itemList: FileInfo[], visibleList: FileInfo[] }
+    private handleMetadataUpdate = (fid: string, metadata: Metadata) =>
+    {
+        this.filterAndSortAll();
+    }
+
+    private filterAndSort = (array: FileInfo[], sort: string, filter: FilterInfo): { itemList: FileInfo[], visibleList: FileInfo[] } =>
     {
         let ret: FileInfo[];
 
@@ -204,25 +173,24 @@ export default class App extends React.PureComponent<Props, State>
             ret = array_copy(array);
         }
 
-        return Filter.apply(filter, ret, this.state.metadata);
+        return Filter.apply(filter, ret);
     }
 
-    private filterAndSortAll(): void
+    private filterAndSortAll = () =>
     {
         if (!this.playlistData) return;
 
-        let filteredLists = this.filterAndSort(this.allFileInfos, this.playlistData.sort, this.state.filter);
+        const filteredLists = this.filterAndSort(this.allFileInfos, this.playlistData.sort, this.state.filter);
 
         this.setState((state) => {
             return {
                 ...state,
-                itemList: filteredLists.itemList,
-                visibleList: filteredLists.visibleList
+                ...filteredLists
             };
         });
     }
     
-    componentDidUpdate(prevProps: Props, prevState: State)
+    componentDidUpdate = (prevProps: Props, prevState: State) =>
     {
         if (prevState.itemList !== this.state.itemList || prevState.shuffled !== this.state.shuffled)
         {
@@ -235,12 +203,12 @@ export default class App extends React.PureComponent<Props, State>
         }
     }
 
-    handleCacheQueueFinished()
+    handleCacheQueueFinished = () =>
     {
         
     }
 
-    private getSortFunctionByCriteria(sortStrings : string[]) : SortFunction<FileInfo>
+    private getSortFunctionByCriteria = (sortStrings : string[]) : SortFunction<FileInfo> =>
     {
         return (a : FileInfo, b : FileInfo) =>
         {    
@@ -248,8 +216,8 @@ export default class App extends React.PureComponent<Props, State>
             {
                 let criterium = sortStrings[i].split(":")[0];
                 let order = sortStrings[i].split(":")[1] || "a";
-                let ma = this.state.metadata.get(a.fid);
-                let mb = this.state.metadata.get(b.fid);
+                let ma = FileCache.metadata.get(a.fid);
+                let mb = FileCache.metadata.get(b.fid);
 
                 if (!mb) return true;
                 if (!ma) return false;
@@ -271,11 +239,11 @@ export default class App extends React.PureComponent<Props, State>
         };
     }
     
-    componentDidMount()
+    componentDidMount = () =>
     {
         document.addEventListener("click", () =>
         {
-            let contextMenus: { [key: string]: ContextMenuInfo } = {};
+            let contextMenus: Record<string, ContextMenuInfo> = {};
             // 400-3334
             for (let key in this.state.contextMenus)
             {
@@ -311,17 +279,17 @@ export default class App extends React.PureComponent<Props, State>
         });
     }
 
-    handleItemClick(itemInfo: FileInfo, e: React.MouseEvent)
+    handleItemClick = (itemInfo: FileInfo, e: React.MouseEvent) =>
     {
-        let s = new Set(this.state.selection);
+        let s = array_copy(this.state.selection);
         let x = e.clientX;
         let y = e.clientY;
 
         if (e.button === 0)
         {
-            if (s.size === 0)
+            if (s.length === 0)
             {
-                s.add(itemInfo);
+                s.push(itemInfo);
             }
             else if (e.shiftKey)
             {
@@ -378,32 +346,26 @@ export default class App extends React.PureComponent<Props, State>
 
                 for (let i = i0; i <= i1; i++)
                 {
-                    s.add(this.state.visibleList[i]);
+                    s.push(this.state.visibleList[i]);
                 }
             }
             else if (e.ctrlKey)
             {
-                if (this.state.selection.has(itemInfo))
+                if (!array_remove(this.state.selection, itemInfo).existed)
                 {
-                    s.delete(itemInfo);
-                }
-                else
-                {
-                    s.add(itemInfo);
+                    s.push(itemInfo);
                 }
             }
             else
             {
-                s.clear();
-                s.add(itemInfo);
+                s = [ itemInfo ];
             }
         }
         else if (e.button === 2)
         {
-            if (!this.state.selection.has(itemInfo))
+            if (!array_contains(s, itemInfo))
             {
-                s.clear();
-                s.add(itemInfo);
+                s = [ itemInfo ];
             }
 
             this.setState((state) =>
@@ -432,7 +394,7 @@ export default class App extends React.PureComponent<Props, State>
         });
     }
 
-    handleItemDoubleClick(itemInfo: FileInfo, e: React.MouseEvent)
+    handleItemDoubleClick = (itemInfo: FileInfo, e: React.MouseEvent) =>
     {
         this.setState((state) => {
             return {
@@ -443,12 +405,12 @@ export default class App extends React.PureComponent<Props, State>
         });
     }
 
-    handlePlaylistSelect(playlistData: PlaylistData): void
+    handlePlaylistSelect = (playlistData: PlaylistData) =>
     {
         this.loadPlaylist(playlistData);
     }
 
-    handleNext()
+    handleNext = () =>
     {
         this.setState((state) => {
             return {
@@ -458,7 +420,7 @@ export default class App extends React.PureComponent<Props, State>
         });
     }
 
-    handlePrevious()
+    handlePrevious = () =>
     {
         if (this.state.currentSeconds > 2)
         {
@@ -478,7 +440,7 @@ export default class App extends React.PureComponent<Props, State>
         }
     }
 
-    handlePlayPause()
+    handlePlayPause = () =>
     {
         if (!this.state.playing)
         {
@@ -493,14 +455,12 @@ export default class App extends React.PureComponent<Props, State>
             }
             else
             {
-                if (this.state.selection.size > 0)
+                if (this.state.selection.length > 0)
                 {
-                    let items: FileInfo[] = [];
-                    this.state.selection.forEach(s => items.push(s));
                     this.setState((state) => {
                         return {
                             ...state,
-                            currentItem: items[0],
+                            currentItem: this.state.selection[0],
                             playing: true
                         };
                     });
@@ -522,21 +482,7 @@ export default class App extends React.PureComponent<Props, State>
     {
         if (!this.state.currentItem) return;
 
-        FileCache.getMetadata(
-            this.state.currentItem,
-            (metadata, fid) =>
-            {
-                this.setState((state) => {
-                    return {
-                        ...state,
-                        metadata: FileCache.metadata
-                    };
-                });
-
-                FileCache.writeCache();
-            },
-            true
-        );
+        FileCache.getMetadata(this.state.currentItem, (metadata, fid) => FileCache.writeCache(), true);
     }
 
     handleTimeChange(currentSeconds: number, durationSeconds: number): void
@@ -641,14 +587,13 @@ export default class App extends React.PureComponent<Props, State>
 
     handleFilter(filter: FilterInfo): void
     {
-        let x = Filter.apply(filter, this.allFileInfos, this.state.metadata);
+        let x = Filter.apply(filter, this.allFileInfos);
 
         this.setState((state) => {
             return {
                 ...state,
+                ...x,
                 filter,
-                visibleList: x.visibleList,
-                itemList: x.itemList
             };
         });
     }
@@ -686,22 +631,7 @@ export default class App extends React.PureComponent<Props, State>
         selection.forEach((song) =>
         {
             fs.utimesSync(song.filename, song.stats.atime, newMTime);
-
-            FileCache.getMetadata(
-                song,
-                (metadata, fid) =>
-                {
-                    this.setState((state) => {
-                        return {
-                            ...state,
-                            metadata: FileCache.metadata
-                        };
-                    });
-    
-                    FileCache.writeCache();
-                },
-                true
-            );
+            FileCache.getMetadata(song, (metadata, fid) => FileCache.writeCache(), true);
         });
 
         // scrolltop doesnt get reset on reload so commenting this out
@@ -717,25 +647,25 @@ export default class App extends React.PureComponent<Props, State>
     {
         let currentMetadata = DefaultMetadata();
 
-        if (this.state.currentItem && this.state.metadata.get(this.state.currentItem.fid))
+        if (this.state.currentItem && FileCache.metadata.get(this.state.currentItem.fid))
         {
-            currentMetadata = this.state.metadata.get(this.state.currentItem.fid) as Metadata;
+            currentMetadata = FileCache.metadata.get(this.state.currentItem.fid) as Metadata;
         }
 
         let albumSrc = this.state.currentItem ? currentMetadata.picture: "";
 
         const selectionArray = Array.from(this.state.selection);
         const playlistLoadedCondition = () => this.playlistData !== null;
-        const songSelectedCondition = () => this.state.selection.size > 0;
+        const songSelectedCondition = () => this.state.selection.length > 0;
         const songIsPartOfPathCondition = () => selectionArray.every(fileInfo => this.parentPathHavers.has(fileInfo));
         const songIsAloneCondition = () => selectionArray.every(fileInfo => !this.parentPathHavers.has(fileInfo));
         const songsAreSameAlbumCondition = () => 
         {
-            return this.state.selection.size > 0
+            return this.state.selection.length > 0
                 && selectionArray.every((fileInfo) =>
                 {
-                    const md1 = this.state.metadata.get(fileInfo.fid);
-                    const md2 = this.state.metadata.get(selectionArray[0].fid);
+                    const md1 = FileCache.metadata.get(fileInfo.fid);
+                    const md2 = FileCache.metadata.get(selectionArray[0].fid);
                     return md1 && md2 && md1.album === md2.album;
                 });
         };
@@ -763,7 +693,6 @@ export default class App extends React.PureComponent<Props, State>
                     onItemDoubleClick={this.handleItemDoubleClick}
                     selection={this.state.selection}
                     currentItem={this.state.currentItem}
-                    metadata={this.state.metadata}
                 />
 
                 <PlaylistSelect

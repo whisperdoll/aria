@@ -1,4 +1,4 @@
-import { FileInfo } from "../utils/cache";
+import { FileInfo, FileCache } from "../utils/cache";
 import { Metadata } from "../utils/datatypes";
 
 export interface FilterInfo
@@ -9,10 +9,10 @@ export interface FilterInfo
 
 export default class Filter
 {
-    public static apply(filter: FilterInfo, itemList: FileInfo[], metadata: Map<string, Metadata>): { itemList: FileInfo[], visibleList: FileInfo[] }
+    public static apply(filter: FilterInfo, itemList: FileInfo[]): { itemList: FileInfo[], visibleList: FileInfo[] }
     {
-        let ret = itemList.filter(item => this.matchesFilter(filter.appliedPart, metadata.get(item.fid)));
-        let visible = ret.filter(item => this.matchesFilter(filter.previewPart, metadata.get(item.fid)));
+        let ret = itemList.filter(item => this.matchesFilter(filter.appliedPart, FileCache.metadata.get(item.fid)));
+        let visible = ret.filter(item => this.matchesFilter(filter.previewPart, FileCache.metadata.get(item.fid)));
         return {
             itemList: ret,
             visibleList: visible

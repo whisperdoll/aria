@@ -4,14 +4,14 @@ import "./Playlist.scss";
 import { FileInfo } from '../utils/cache';
 import { Metadata, DefaultMetadata } from '../utils/datatypes';
 import * as path from "path";
+import { array_contains } from '../utils/utils';
 
 interface Props
 {
     fileInfos: FileInfo[];
     onItemClick: (itemInfo: FileInfo, e: React.MouseEvent) => any;
     onItemDoubleClick: (itemInfo: FileInfo, e: React.MouseEvent) => any;
-    selection: Set<FileInfo>;
-    metadata: Map<string, Metadata>;
+    selection: FileInfo[];
     currentItem: FileInfo | null;
 }
 
@@ -52,9 +52,8 @@ export default class Playlist extends React.PureComponent<Props, State>
                     fileInfo={fileInfo}
                     onClick={this.handleClick}
                     onDoubleClick={this.handleDoubleClick}
-                    selected={this.props.selection.has(fileInfo)}
+                    selected={array_contains(this.props.selection, fileInfo)}
                     playing={this.props.currentItem === fileInfo}
-                    metadata={this.props.metadata.get(fileInfo.fid) || (DefaultMetadata(path.basename(fileInfo.filename)))}
                 />
             );
         });

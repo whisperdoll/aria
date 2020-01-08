@@ -5,7 +5,7 @@ import { secsToMinSecs } from '../utils/utils';
 
 interface Props
 {
-    selection: Set<FileInfo>;
+    selection: FileInfo[];
 }
 
 interface State
@@ -23,9 +23,9 @@ export default class StatusBar extends React.PureComponent<Props, State>
     {
         let selection = this.props.selection;
         let infos = [];
-        let totalTime = selection.size > 0 ? Array.from(selection).map(info => (FileCache.metadata.get(info.fid) as Metadata).length).reduce((l, r) => l + r) : 0;
+        let totalTime = selection.length > 0 ? selection.map(info => (FileCache.metadata.get(info.fid) as Metadata).length).reduce((l, r) => l + r) : 0;
 
-        infos.push("Selected " + selection.size + " item" + (selection.size === 1 ? "" : "s") +
+        infos.push("Selected " + selection.length + " item" + (selection.length === 1 ? "" : "s") +
             " (" + secsToMinSecs(totalTime) + ")");
 
         return (

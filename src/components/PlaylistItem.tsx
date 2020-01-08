@@ -1,7 +1,7 @@
 import React from 'react';
 import "./PlaylistItem.scss";
-import { Metadata } from '../utils/datatypes';
-import { FileInfo } from "../utils/cache";
+import { Metadata, DefaultMetadata } from '../utils/datatypes';
+import { FileInfo, FileCache } from "../utils/cache";
 const defaultThumbnail = require("../assets/default.png");
 
 interface Props
@@ -12,11 +12,11 @@ interface Props
     onDoubleClick: (itemInfo: FileInfo, e: React.MouseEvent) => any;
     selected: boolean;
     playing: boolean;
-    metadata: Metadata;
 }
 
 interface State
 {
+    metadata: Metadata;
 }
 
 export default class PlaylistItem extends React.PureComponent<Props, State>
@@ -25,10 +25,18 @@ export default class PlaylistItem extends React.PureComponent<Props, State>
     {
         super(props);
         this.state = {
+            metadata: DefaultMetadata(this.props.fileInfo.filename)
         };
 
-        this.handleClick = this.handleClick.bind(this);
-        this.handleDoubleClick = this.handleDoubleClick.bind(this);
+        FileCache.subscribeToFid(this.props.fileInfo.fid, this.handleMetadataUpdate);
+    }
+
+    handleMetadataUpdate = (fid: string, metadata: Metadata) =>
+    {
+        this.setState(state => ({
+            ...state,
+            metadata
+        }));
     }
     
     componentDidMount()
@@ -37,16 +45,16 @@ export default class PlaylistItem extends React.PureComponent<Props, State>
 
     getSubtitle(): string
     {
-        return this.props.metadata.artist + " — " + this.props.metadata.album +
-            (this.props.metadata.track ? "[" + this.props.metadata.track.toString() + "]" : "");
+        return this.state.metadata.artist + " — " + this.state.metadata.album +
+            (this.state.metadata.track ? "[" + this.state.metadata.track.toString() + "]" : "");
     }
 
-    handleClick(e: React.MouseEvent): void
+    handleClick = (e: React.MouseEvent) =>
     {
         this.props.onClick(this.props.fileInfo, e);
     }
 
-    handleDoubleClick(e: React.MouseEvent): void
+    handleDoubleClick = (e: React.MouseEvent) =>
     {
         this.props.onDoubleClick(this.props.fileInfo, e);
     }
@@ -73,12 +81,12 @@ export default class PlaylistItem extends React.PureComponent<Props, State>
             >
                 <img
                     className="thumbnail"
-                    src={this.props.metadata.picture || defaultThumbnail}
+                    src={this.state.metadata.picture || defaultThumbnail}
                     alt="thumbnail"
                 />
                 <div className="shadow"></div>
                 <div className="labels">
-                    <div className="primaryLabel">{ this.props.metadata.title }</div>
+                    <div className="primaryLabel">{ this.state.metadata.title }</div>
                     <div className="secondaryLabel">{ this.getSubtitle() }</div>
                 </div>
             </div>

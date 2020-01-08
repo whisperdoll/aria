@@ -12,6 +12,8 @@ export interface FileInfo
     stats : fs.BigIntStats;
 };
 
+type MetadataUpdateHandler = (fid: string, metadata: Metadata) => any;
+
 export class FileCache
 {
     private static cacheFilename = path.join(getUserDataPath(), "songs.cache");
@@ -25,9 +27,9 @@ export class FileCache
     private static working : number = 0;
     private static workingAllowed : number = 4;
     public static onQueueFinished: () => any;
-    private static subscriptions = new Map<string, ((metadata: Metadata) => any)[]>();
+    private static subscriptions = new Map<string, (MetadataUpdateHandler)[]>();
 
-    public static subscribeToFid(fid: string, handler: (metadata: Metadata) => any)
+    public static subscribeToFid(fid: string, handler: MetadataUpdateHandler)
     {
         let arr = this.subscriptions.get(fid);
         if (!arr)
@@ -39,7 +41,7 @@ export class FileCache
         arr.push(handler);
     }
 
-    public static unsubscribeFromFid(fid: string, handler: (metadata: Metadata) => any)
+    public static unsubscribeFromFid(fid: string, handler: MetadataUpdateHandler)
     {
         let arr = this.subscriptions.get(fid);
 
@@ -57,9 +59,9 @@ export class FileCache
         fileInfo.filename = newFileName;
     }
 
-    public static getInfo(filename : string) : FileInfo
+    public static getInfo = (filename : string) : FileInfo =>
     {
-        let cached = this.filenameStats.get(filename);
+        let cached = FileCache.filenameStats.get(filename);
         if (cached === undefined)
         {
             let stats = bigintStatSync(filename);
@@ -68,7 +70,7 @@ export class FileCache
                 fid: stats.ino.toString(),
                 stats: stats
             };
-            this.filenameStats.set(filename, info);
+            FileCache.filenameStats.set(filename, info);
             return info;
         }
         else
@@ -92,7 +94,7 @@ export class FileCache
         {
             for (const handler of arr)
             {
-                handler(metadata);
+                handler(fid, metadata);
             }
         }
     }
