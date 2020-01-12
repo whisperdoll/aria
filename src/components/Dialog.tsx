@@ -30,12 +30,9 @@ export default class Dialog extends React.PureComponent<Props, State>
 
     render()
     {
-        return (
+        return (this.props.showing ?
             <div
                 className="dialog-backdrop"
-                style={{
-                    display: this.props.showing ? "" : "none"
-                }}
                 onClick={this.handleBackdropClick.bind(this)}
             >
                 <div
@@ -45,6 +42,6 @@ export default class Dialog extends React.PureComponent<Props, State>
                     {this.props.content}
                 </div>
             </div>
-        );
+        : null);
     }
 }

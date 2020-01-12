@@ -1,5 +1,7 @@
 import * as path from "path";
 import { getUserDataPath } from './utils';
+import { FileInfo } from "./cache";
+import { FilterInfo } from "../components/Filter";
 const defaultPic = require("../assets/default.png");
 
 export interface Metadata
@@ -9,7 +11,7 @@ export interface Metadata
     album: string,
     length: number,
     picture: string,
-    plays: number,
+    plays: number[], // timestamps
     track: number
     modified: number;
     isPlaceholder: boolean;
@@ -23,7 +25,7 @@ export function DefaultMetadata(filename?: string): Metadata
         album: "--",
         length: 0,
         picture: defaultPic,
-        plays: 0,
+        plays: [],
         track: 0,
         modified: 0,
         isPlaceholder: true
@@ -91,4 +93,39 @@ export function copyPlaylistData(from: PlaylistData): PlaylistData
     };
 
     return copy;
+}
+
+export interface PlaylistItemCollection
+{
+    items: (PlaylistItemCollection | FileInfo)[];
+    sort: string;
+    filter: string;
+    isCollection: true;
+}
+
+export function isPlaylistItemCollection(x: any): x is PlaylistItemCollection
+{
+    return x.isCollection;
+}
+
+export function flattenCollection(collection: PlaylistItemCollection): FileInfo[]
+{
+    const ret: FileInfo[] = [];
+
+    const recurse = (collection: PlaylistItemCollection) =>
+    {
+        for (const item of collection.items)
+        {
+            if (isPlaylistItemCollection(item))
+            {
+                recurse(item);
+            }
+            else
+            {
+                ret.push(item);
+            }
+        }
+    };
+
+    return ret;
 }

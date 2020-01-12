@@ -3,7 +3,8 @@ import "./WaveBar.scss";
 import * as path from "path"
 import * as fs from "fs"
 import { getUserDataPath, fileExists, getRainbowColor } from '../utils/utils';
-import { FileInfo } from '../utils/cache';
+import { FileInfo, FileCache } from '../utils/cache';
+import { Metadata } from '../utils/datatypes';
 const WaveSurfer = require("wavesurfer.js");
 
 interface Props
@@ -27,6 +28,7 @@ export default class WaveBar extends React.Component<Props, State>
     private playing: boolean = false;
     private container: React.RefObject<HTMLDivElement>;
     private awaitingPlayback: FileInfo | null = null;
+    private playTimer: number | null = null;
 
     constructor(props: Props)
     {
@@ -102,14 +104,54 @@ export default class WaveBar extends React.Component<Props, State>
         }
     }
 
+    private recordPlay = () =>
+    {
+        const metadata: Metadata = {...FileCache.metadata.get(this.currentItem!.fid)!};
+        metadata.plays.push(Date.now());
+        FileCache.updateMetadata(this.currentItem!, metadata);
+        FileCache.writeCache();
+    }
+
+    private setupPlayRecorder = () =>
+    {
+        if (!this.currentItem) return;
+        
+        this.clearPlayRecorder();
+        
+        FileCache.getMetadata(this.currentItem, (metadata, fileInfo, wasCached) =>
+        {
+            if (this.currentItem !== fileInfo) return; // maybe they picked another song while we were waiting
+
+            let threshold = 10;
+
+            if (metadata.length < 10)
+            {
+                threshold = metadata.length / 2;
+            }
+
+            setTimeout(this.recordPlay, threshold * 1000);
+        });
+    }
+
+    private clearPlayRecorder = () =>
+    {
+        if (this.playTimer !== null)
+        {
+            clearTimeout(this.playTimer);
+        }
+    }
+
     private play(itemInfo: FileInfo | null)
     {
         if (!itemInfo) return;
+
+        this.clearPlayRecorder();
         
         if (this.currentItem === itemInfo)
         {
             // restart //
             this.waveSurfer.seekTo(0);
+            this.setupPlayRecorder();
         }
         else
         {
@@ -136,6 +178,7 @@ export default class WaveBar extends React.Component<Props, State>
                     {
                         this.waveSurfer.play();
                         this.props.onPlaybackStart();
+                        this.setupPlayRecorder();
                     }
                 });
             }

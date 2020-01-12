@@ -53,6 +53,29 @@ export class FileCache
         array_remove(arr, handler);
     }
 
+    public static unsubscribeFromAllWithHandler(handler: MetadataUpdateHandler)
+    {
+        this.subscriptions.forEach((val, key) =>
+        {
+            array_remove(val, handler);
+        });
+    }
+
+    private static updateAndBroadcast(fid: string, metadata: Metadata)
+    {
+        this.metadata.set(fid, metadata);
+
+        const arr = this.subscriptions.get(fid);
+
+        if (arr)
+        {
+            for (const handler of arr)
+            {
+                handler(fid, metadata);
+            }
+        }
+    }
+
     public static rename(fileInfo: FileInfo, newFileName: string): void
     {
         fs.renameSync(fileInfo.filename, newFileName);
@@ -82,21 +105,6 @@ export class FileCache
     public static getFid(filename : string) : string
     {
         return this.getInfo(filename).fid;
-    }
-
-    private static updateAndBroadcast(fid: string, metadata: Metadata)
-    {
-        this.metadata.set(fid, metadata);
-
-        const arr = this.subscriptions.get(fid);
-
-        if (arr)
-        {
-            for (const handler of arr)
-            {
-                handler(fid, metadata);
-            }
-        }
     }
 
     public static getMetadata(fileInfo: FileInfo, onupdate? : (data : Metadata, fileInfo: FileInfo, wasCached: boolean) => any, force: boolean = false) : void
@@ -230,6 +238,11 @@ export class FileCache
                 ret();
             });
         });
+    }
+
+    public static updateMetadata(fileInfo: FileInfo, metadata: Metadata)
+    {
+        this.updateAndBroadcast(fileInfo.fid, metadata);
     }
 
     public static clearMetadataQueue(): void

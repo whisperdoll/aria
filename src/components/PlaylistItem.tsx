@@ -25,7 +25,7 @@ export default class PlaylistItem extends React.PureComponent<Props, State>
     {
         super(props);
         this.state = {
-            metadata: DefaultMetadata(this.props.fileInfo.filename)
+            metadata: FileCache.metadata.get(this.props.fileInfo.fid) || DefaultMetadata(this.props.fileInfo.filename)
         };
 
         FileCache.subscribeToFid(this.props.fileInfo.fid, this.handleMetadataUpdate);
@@ -37,10 +37,17 @@ export default class PlaylistItem extends React.PureComponent<Props, State>
             ...state,
             metadata
         }));
+
+        this.forceUpdate();
     }
     
     componentDidMount()
     {
+    }
+
+    componentWillUnmount = () =>
+    {
+        FileCache.unsubscribeFromFid(this.props.fileInfo.fid, this.handleMetadataUpdate);
     }
 
     getSubtitle(): string

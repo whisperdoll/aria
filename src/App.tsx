@@ -1,11 +1,11 @@
 import React from 'react';
 import './App.scss';
 import Playlist from './components/Playlist';
-import { getUserDataPath, endsWith, array_copy, mod, mergeSorted, SortFunction, array_shuffle, array_contains, array_remove, array_ensureOne, array_remove_all, isFile } from './utils/utils';
+import { getUserDataPath, endsWith, array_copy, mod, mergeSorted, SortFunction, array_shuffle, array_contains, array_remove, array_ensureOne, array_remove_all, isFile, isFileNotFoundError } from './utils/utils';
 import { FileCache, FileInfo } from "./utils/cache";
 import * as fs from "fs";
 import * as path from "path";
-import { PlaylistData, Metadata, DefaultMetadata } from './utils/datatypes';
+import { PlaylistData, Metadata, DefaultMetadata, PlaylistItemCollection, isPlaylistItemCollection } from './utils/datatypes';
 import PlaylistSelect from './components/PlaylistSelect';
 import BottomBar from './components/BottomBar';
 import * as Electron from "electron";
@@ -16,6 +16,7 @@ import FilterBox from './components/FilterBox';
 import Filter, { FilterInfo } from './components/Filter';
 import StatusBar from './components/StatusBar';
 import RenameDialog from './components/RenameDialog';
+const dialog = require("electron").remote.dialog;
 
 interface Props
 {
@@ -43,6 +44,7 @@ interface State
     shuffled: boolean;
     showingDialogs: Record<string, boolean>;
     contextMenus: Record<string, ContextMenuInfo>;
+    rerenderStatusBarSwitch: boolean;
 }
 
 export const AllowedExtensions = [ "mp3", "m4a" ];
@@ -50,7 +52,7 @@ export const AllowedExtensions = [ "mp3", "m4a" ];
 export default class App extends React.PureComponent<Props, State>
 {
     private playlistData: PlaylistData | null = null;
-    private allFileInfos: FileInfo[] = [];
+    private nowPlaying: PlaylistItemCollection | null = null;
     private contextData: PlaylistData | null = null;
     private bottomBar: React.RefObject<BottomBar>;
     private playOrder: number[] = []; // array of indeces
@@ -64,6 +66,8 @@ export default class App extends React.PureComponent<Props, State>
         {
             fs.mkdirSync(getUserDataPath());
         }
+
+        FileCache.loadMetadata();
 
         this.state = {
             filter: {
@@ -96,7 +100,8 @@ export default class App extends React.PureComponent<Props, State>
                     y: 0,
                     context: null
                 }
-            }
+            },
+            rerenderStatusBarSwitch: false
         };
 
         this.bottomBar = React.createRef();
@@ -117,9 +122,43 @@ export default class App extends React.PureComponent<Props, State>
         }
     }
 
+    private findMissingFile(badPath: string, isFile: boolean): string
+    {
+        if (isFile)
+        {
+            const newPath = dialog.showOpenDialogSync({
+                title: "Find replacement for " + path.basename(badPath),
+                properties: [ "openFile" ],
+                filters:
+                [
+                    {
+                        name: "Music file",
+                        extensions: AllowedExtensions
+                    },
+                    {
+                        name: "All Files",
+                        extensions: ["*"]
+                    }
+                ],
+            });
+
+            return newPath ? newPath[0] : "";
+        }
+        else
+        {
+            const newPath = dialog.showOpenDialogSync({
+                title: "Find replacement for " + path.basename(badPath),
+                properties: [ "openDirectory" ]
+            });
+
+            return newPath ? newPath[0] : "";
+        }
+    }
+
     private loadPlaylist = (playlistData: PlaylistData) =>
     {
         console.log("loading " + playlistData.name);
+        FileCache.unsubscribeFromAllWithHandler(this.handleMetadataUpdate);
         this.playlistData = playlistData;
         this.parentPathHavers.clear();
 
@@ -127,55 +166,136 @@ export default class App extends React.PureComponent<Props, State>
         {
             return AllowedExtensions.some(e => endsWith(f, "." + e));
         };
+        
+        this.nowPlaying = {
+            items: [],
+            filter: playlistData.filter,
+            sort: playlistData.sort,
+            isCollection: true
+        };
 
-        this.allFileInfos = [];
+        let hadToFetchSomething = false;
+        let counter = 0;
 
         for (const playlistPath of playlistData.paths)
         {
-            const fileInfo = FileCache.getInfo(playlistPath.path);
+            const tryGetFileInfo = (): FileInfo =>
+            {
+                try
+                {
+                    return FileCache.getInfo(playlistPath.path);
+                }
+                catch (e)
+                {
+                    if (e.code && e.code === "ENOENT")
+                    {
+                        alert("could not find file or directory: " + playlistPath.path + "\nplease find it now !");
+                        const newPath = this.findMissingFile(playlistPath.path, AllowedExtensions.map(x => "." + x).includes(path.extname(playlistPath.path)));
+                       
+                        if (newPath)
+                        {
+                            playlistPath.path = newPath;
+                        }
+
+                        return tryGetFileInfo();
+                    }
+                    else
+                    {
+                        throw e;
+                    }
+                }
+            }
+
+            let fileInfo = tryGetFileInfo();
+
+            if (!fileInfo) return;
             
             if (fileInfo.stats.isFile() && filenameAllowed(playlistPath.path))
             {
-                this.allFileInfos.push(fileInfo);
+                this.nowPlaying.items.push(fileInfo);
                 FileCache.subscribeToFid(fileInfo.fid, this.handleMetadataUpdate);
-                FileCache.getMetadata(fileInfo);
+                FileCache.getMetadata(fileInfo, (data, fileInfo, wasCached) =>
+                {
+                    if (!wasCached)
+                    {
+                        hadToFetchSomething = true;
+                    }
+                });
             }
             else
             {
-                const subFileInfos = fs.readdirSync(playlistPath.path).filter(filenameAllowed).map(filename => path.join(playlistPath.path, filename)).map(FileCache.getInfo);
+                let subFileInfos = fs.readdirSync(playlistPath.path).filter(filenameAllowed).map(filename => path.join(playlistPath.path, filename)).map(FileCache.getInfo);
+
+                const subCollection: PlaylistItemCollection = {
+                    items: subFileInfos,
+                    filter: playlistPath.filter || "",
+                    sort: playlistPath.sort || "",
+                    isCollection: true
+                };
+
                 for (const subFileInfo of subFileInfos)
                 {
-                    this.allFileInfos.push(subFileInfo);
                     this.parentPathHavers.add(subFileInfo);
-                    FileCache.subscribeToFid(fileInfo.fid, this.handleMetadataUpdate);
-                    FileCache.getMetadata(subFileInfo);
+                    FileCache.subscribeToFid(subFileInfo.fid, this.handleMetadataUpdate);
+                    FileCache.getMetadata(subFileInfo, (data, fileInfo, wasCached) =>
+                    {
+                        if (!wasCached)
+                        {
+                            hadToFetchSomething = true;
+                            counter++;
+                            if (counter % 50 === 0 || counter === subFileInfos.length)
+                            {
+                                this.filterAndSortAll();
+                            }
+                        }
+                    });
                 }
+
+                this.nowPlaying.items.push(subCollection);
             }
         }
 
-        this.setState(state => ({
-            itemList: array_copy(this.allFileInfos),
-            visibleList: array_copy(this.allFileInfos)
-        }));
+        if (!hadToFetchSomething)
+        {
+            this.filterAndSortAll();
+        }
     }
 
     private handleMetadataUpdate = (fid: string, metadata: Metadata) =>
     {
+        console.log("updated meteadata for " + metadata.title);
         this.filterAndSortAll();
+        this.setState(state => ({
+            ...state,
+            rerenderStatusBarSwitch: !state.rerenderStatusBarSwitch
+        }));
     }
 
-    private filterAndSort = (array: FileInfo[], sort: string, filter: FilterInfo): { itemList: FileInfo[], visibleList: FileInfo[] } =>
+    private filterAndSort = (collection: PlaylistItemCollection, filter: FilterInfo): { itemList: FileInfo[], visibleList: FileInfo[] } =>
     {
-        let ret: FileInfo[];
+        let ret: FileInfo[] = [];
 
-        if (sort)
+        for (const item of collection.items)
         {
-            let sortStrings = sort.split(",");
-            ret = mergeSorted(array, this.getSortFunctionByCriteria(sortStrings));
+            if (isPlaylistItemCollection(item))
+            {
+                const { itemList } = this.filterAndSort(item, {
+                    appliedPart: item.filter,
+                    previewPart: ""
+                });
+
+                ret.push(...itemList);
+            }
+            else
+            {
+                ret.push(item);
+            }
         }
-        else
+
+        if (collection.sort)
         {
-            ret = array_copy(array);
+            let sortStrings = collection.sort.split(",");
+            ret = mergeSorted(ret, this.getSortFunctionByCriteria(sortStrings));
         }
 
         return Filter.apply(filter, ret);
@@ -183,9 +303,9 @@ export default class App extends React.PureComponent<Props, State>
 
     private filterAndSortAll = () =>
     {
-        if (!this.playlistData) return;
+        if (!this.playlistData || !this.nowPlaying) return;
 
-        const filteredLists = this.filterAndSort(this.allFileInfos, this.playlistData.sort, this.state.filter);
+        const filteredLists = this.filterAndSort(this.nowPlaying, this.state.filter);
 
         this.setState((state) => {
             return {
@@ -483,14 +603,14 @@ export default class App extends React.PureComponent<Props, State>
         }
     }
 
-    handlePlaybackStart()
+    handlePlaybackStart = () =>
     {
         if (!this.state.currentItem) return;
 
         FileCache.getMetadata(this.state.currentItem, (metadata, fid) => FileCache.writeCache(), true);
     }
 
-    handleTimeChange(currentSeconds: number, durationSeconds: number): void
+    handleTimeChange = (currentSeconds: number, durationSeconds: number): void =>
     {
         this.setState((state) => {
             return {
@@ -523,7 +643,7 @@ export default class App extends React.PureComponent<Props, State>
         return this.state.itemList[orderIndex];
     }
 
-    handlePlaybackFinish()
+    handlePlaybackFinish = () =>
     {
         this.setState((state) => {
             return {
@@ -533,12 +653,12 @@ export default class App extends React.PureComponent<Props, State>
         });
     }
 
-    handlePlaylistAccept(playlistData: PlaylistData): void
+    handlePlaylistAccept = (playlistData: PlaylistData): void =>
     {
 
     }
 
-    handleDialogCancel()
+    handleDialogCancel = () =>
     {
         this.setState((state) => {
             return {
@@ -551,7 +671,7 @@ export default class App extends React.PureComponent<Props, State>
         });
     }
 
-    handleRenameDialogHide()
+    handleRenameDialogHide = () =>
     {
         this.setState((state) => {
             return {
@@ -564,14 +684,14 @@ export default class App extends React.PureComponent<Props, State>
         });
     }
 
-    handleEditPlaylist(): void
+    handleEditPlaylist = (): void =>
     {
         if (!this.contextData) return;
         
         console.log("editing " + this.contextData.name);
     }
 
-    handlePlaylistContextMenu(data: PlaylistData, x: number, y: number): void
+    handlePlaylistContextMenu = (data: PlaylistData, x: number, y: number): void =>
     {
         this.contextData = data;
         this.setState((state) => {
@@ -590,20 +710,18 @@ export default class App extends React.PureComponent<Props, State>
         });
     }
 
-    handleFilter(filter: FilterInfo): void
+    handleFilter = (filter: FilterInfo): void =>
     {
-        let x = Filter.apply(filter, this.allFileInfos);
-
-        this.setState((state) => {
-            return {
-                ...state,
-                ...x,
-                filter,
-            };
+        this.setState(state => ({
+            ...state,
+            filter
+        }), () =>
+        {
+            this.filterAndSortAll()
         });
     }
 
-    handleShuffleToggle(shuffle: boolean): void
+    handleShuffleToggle = (shuffle: boolean): void =>
     {
         this.setState((state) => {
             return {
@@ -613,7 +731,7 @@ export default class App extends React.PureComponent<Props, State>
         });
     }
 
-    handleRenameRequest(): void
+    handleRenameRequest = (): void =>
     {
         this.setState((state) =>
         {
@@ -725,6 +843,7 @@ export default class App extends React.PureComponent<Props, State>
 
                 <StatusBar
                     selection={this.state.selection}
+                    rerenderSwitch={this.state.rerenderStatusBarSwitch}
                 />
 
                 <PlaylistDialog
