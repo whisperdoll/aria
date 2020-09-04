@@ -31,7 +31,7 @@
     "@types/react-dom": "^16.9.4",
     "electron-is-dev": "^1.1.0",
     "music-metadata": "^4.8.4",
-    "node-sass": "^4.13.0",
+    "node-sass": "^4.13.1",
     "react": "^16.11.0",
     "react-dom": "^16.11.0",
     "react-scripts": "3.2.0",
